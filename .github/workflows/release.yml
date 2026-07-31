@@ -76,12 +76,18 @@ jobs:
           shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
           echo "asset=$name" >> "$GITHUB_OUTPUT"
 
-      - uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ inputs.tag }}
-          files: |
-            ${{ steps.package.outputs.asset }}.tar.gz
-            ${{ steps.package.outputs.asset }}.tar.gz.sha256
+      # `gh release upload` rather than a third-party action: the action resolves the
+      # release from github.ref, which is a branch when this workflow is called or
+      # dispatched, so it 403s trying to update a release it looked up under the wrong
+      # ref. gh takes the tag explicitly, and it is one less action in the supply chain.
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ inputs.tag }}" \
+            "${{ steps.package.outputs.asset }}.tar.gz" \
+            "${{ steps.package.outputs.asset }}.tar.gz.sha256" \
+            --clobber
 
   linux:
     name: Linux ${{ matrix.arch }}
@@ -120,9 +126,11 @@ jobs:
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
           echo "asset=$name" >> "$GITHUB_OUTPUT"
 
-      - uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ inputs.tag }}
-          files: |
-            ${{ steps.package.outputs.asset }}.tar.gz
-            ${{ steps.package.outputs.asset }}.tar.gz.sha256
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ inputs.tag }}" \
+            "${{ steps.package.outputs.asset }}.tar.gz" \
+            "${{ steps.package.outputs.asset }}.tar.gz.sha256" \
+            --clobber
