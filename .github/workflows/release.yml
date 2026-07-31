@@ -7,6 +7,17 @@ name: Release Binaries
 # creates both using GITHUB_TOKEN, and GitHub does not start new workflow runs from events
 # raised by that token. A `release: published` trigger here looks correct and silently
 # never fires. Being called directly keeps it inside the same run, which has no such rule.
+#
+# release-please creates the release as a draft (see release-please-config.json) and the
+# `publish` job below takes it out of draft once every asset is uploaded. That closes the
+# window where `releases/latest` already pointed at the new tag but its assets did not
+# exist yet, which made scripts/install.sh and `ruter upgrade` 404 for the few minutes the
+# macOS build takes. It also means a failed build leaves a draft rather than a published
+# release with no binaries — the v0.2.0 failure mode.
+#
+# A draft release has no git tag: GitHub only creates the ref when the release is
+# published. That is why the build jobs check out `ref` (the release commit) and fall back
+# to `tag` only for the dispatch path, where the tag necessarily already exists.
 on:
   workflow_call:
     inputs:
@@ -14,12 +25,22 @@ on:
         description: Tag to build and attach assets to
         required: true
         type: string
+      ref:
+        description: Commit to build from. Needed while the release is still a draft, since the tag does not exist yet.
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       tag:
         description: Existing tag to build and attach assets to (e.g. v0.2.0)
         required: true
         type: string
+      ref:
+        description: Commit to build from. Leave empty to build the tag itself.
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -33,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ inputs.ref || inputs.tag }}
       # Packaging helpers come from the workflow's own ref, not from the tag. Backfilling
       # assets onto a tag cut before a helper existed would otherwise fail on a missing
       # file, which is exactly how v0.2.0 broke.
@@ -115,7 +136,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ inputs.ref || inputs.tag }}
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
@@ -140,3 +161,20 @@ jobs:
             "${{ steps.package.outputs.asset }}.tar.gz" \
             "${{ steps.package.outputs.asset }}.tar.gz.sha256" \
             --clobber
+
+  # Publishing is what creates the git tag and moves `releases/latest`, so it must happen
+  # only after every asset is in place. Until then the release stays a draft and the
+  # installer keeps resolving the previous version instead of 404ing on assets that do
+  # not exist yet.
+  publish:
+    name: Publish release
+    needs: [macos, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Take the release out of draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "${{ inputs.tag }}" --draft=false
