@@ -33,7 +33,28 @@ Norge. Navnet kommer av at det er skrevet for daglig bruk i Oslo, der Ruter er o
 
 ## Kom i gang
 
-### Ferdigbygde binærfiler
+### Installer
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mortennordbye/ruter-cli/main/scripts/install.sh | sh
+```
+
+Skriptet finner siste release, laster ned riktig binærfil for maskinen din, sjekker
+sjekksummen og installerer til `~/.local/bin/ruter`. macOS får i tillegg `Ruter.app`
+i `~/Applications`, fordi det er det som gir verktøyet egen tilgang til stedstjenester
+— se forklaringen under.
+
+Miljøvariabler hvis du vil styre hvor ting havner: `RUTER_BIN_DIR`, `RUTER_APP_DIR`,
+og `RUTER_VERSION` for å pinne en bestemt tag.
+
+### Oppgrader
+
+```sh
+ruter upgrade           # sjekker og installerer nyeste versjon
+ruter upgrade --check   # bare si fra om det finnes noe nyere
+```
+
+### Manuelt fra Releases
 
 Hver release har binærfiler under [Releases](https://github.com/mortennordbye/ruter-cli/releases):
 én universal build for macOS (Apple Silicon og Intel i samme fil), og Linux x86_64 og aarch64.
@@ -44,9 +65,6 @@ cd ruter-vX.Y.Z-macos-universal
 ./install.sh
 ```
 
-macOS-arkivet inneholder `Ruter.app` fordi det er det som gir verktøyet egen tilgang til
-stedstjenester — se forklaringen under. `install.sh` kopierer bundlet til
-`~/Applications`, signerer det lokalt på nytt og symlenker `~/.local/bin/ruter`.
 Linux-arkivene inneholder bare binærfilen; legg den hvor du vil.
 
 Binærfilene er ad-hoc-signert, ikke notarisert. Lastet ned med `curl` er det uproblematisk;
@@ -80,6 +98,7 @@ skrive inn lengde- og breddegrad selv.
 | `ruter "Oslo S"` | destinasjonen kan også være en adresse eller `59.91,10.75` |
 | `ruter hjem --json` | rå JSON, for skripting |
 | `ruter where` | hvor den tror du er, og hvilken kilde den brukte |
+| `ruter upgrade` | sjekk om det finnes en nyere versjon, og installer den |
 
 Nyttige flagg: `-n` antall resultater, `--modes bus,tram` for å begrense transportmidler,
 `--no-gps` / `--no-ip` for å skru av posisjonskilder, `--color auto\|always\|never`.
@@ -157,10 +176,11 @@ ruter-cli/
 │   ├── config.rs      # TOML-config og lagrede steder
 │   ├── location.rs    # posisjonskjeden, inkl. Core Location
 │   ├── watch.rs       # --watch (ratatui) og bakgrunnstråden
+│   ├── upgrade.rs     # ruter upgrade: versjonssjekk mot GitHub
 │   ├── entur/         # Journey Planner v3-klient og geokoder
 │   └── render/        # avgangstavla: farger, merker, tidsformat
 ├── macos/             # Info.plist, limes inn i binærfilen av build.rs
-├── scripts/           # install-macos.sh (app-bundle + symlenke)
+├── scripts/           # install.sh (curl-installer), install-macos.sh (bygg selv)
 └── tests/fixtures/    # innspilte API-svar; testene går aldri på nett
 ```
 

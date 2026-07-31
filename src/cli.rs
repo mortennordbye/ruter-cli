@@ -94,6 +94,13 @@ pub enum Command {
 
     /// Show where ruter thinks you are, and why. Useful when GPS misbehaves.
     Where,
+
+    /// Check for a newer version and install it.
+    Upgrade {
+        /// Only report whether a new version exists.
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

@@ -3,6 +3,7 @@ mod config;
 mod entur;
 mod location;
 mod render;
+mod upgrade;
 mod watch;
 
 use anyhow::{Context, Result, bail};
@@ -39,6 +40,13 @@ fn emit(text: &str) -> Result<()> {
 }
 
 fn run(cli: Cli) -> Result<()> {
+    // Handled before the config is touched. `deny_unknown_fields` means a config written
+    // by a newer version stops an older binary dead, and upgrading is exactly the way out
+    // of that; it must not need a readable config.
+    if let Some(Command::Upgrade { check }) = &cli.command {
+        return upgrade::run(*check);
+    }
+
     let config = Config::load()?;
     let client = Client::new(&config.client_name);
     let style = Style::detect(cli.common.colour_override());
@@ -49,6 +57,7 @@ fn run(cli: Cli) -> Result<()> {
             cmd_near(&client, &config, &cli.common, style, radius, stops)
         }
         Some(Command::Where) => cmd_where(&client, &config, &cli.common, style),
+        Some(Command::Upgrade { .. }) => unreachable!("handled before the config is loaded"),
         None => cmd_trip(&client, &config, &cli.common, style, cli.destination),
     }
 }

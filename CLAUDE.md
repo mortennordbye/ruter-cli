@@ -189,6 +189,10 @@ Rules:
   a tight refresh loop gets the user rate-limited.
 - **`--json` output is a public interface.** Changing field names breaks anyone scripting
   against it.
+- **`scripts/install.sh` on `main` is live.** It is what the README's curl one-liner and
+  every installed `ruter upgrade` fetch and execute. A break there is not caught by a
+  release; it breaks upgrades for people who already have the tool. Test it against a real
+  tag with `RUTER_BIN_DIR` and `RUTER_APP_DIR` pointed at a temp dir before merging.
 
 ### Environment variables
 
@@ -206,10 +210,12 @@ src/
 ├── config.rs      TOML config + saved places
 ├── location.rs    position resolution chain (flag -> place -> GPS -> IP -> default)
 ├── watch.rs       --watch ratatui view and background poller
+├── upgrade.rs     `ruter upgrade`: version check, delegates install to scripts/install.sh
 ├── entur/         Journey Planner v3 client, trip/nearest/geocode queries
 └── render/        one-shot board: colours, badges, time formatting
 macos/             Info.plist embedded by build.rs for Location Services
-scripts/           install-macos.sh (app bundle + symlink)
+scripts/           install.sh (curl installer, also run by `ruter upgrade`),
+                   install-macos.sh (build from source + app bundle)
 tests/fixtures/    recorded API responses; the suite never hits the network
 ```
 
