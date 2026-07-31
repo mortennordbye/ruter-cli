@@ -1,0 +1,166 @@
+{
+  "trip": {
+    "tripPatterns": [
+      {
+        "expectedStartTime": "2026-07-31T14:08:28+02:00",
+        "expectedEndTime": "2026-07-31T14:38:52+02:00",
+        "duration": 1824,
+        "walkDistance": 568.13,
+        "legs": [
+          {
+            "mode": "foot",
+            "distance": 142.99,
+            "duration": 137,
+            "aimedStartTime": "2026-07-31T14:08:28+02:00",
+            "expectedStartTime": "2026-07-31T14:08:28+02:00",
+            "expectedEndTime": "2026-07-31T14:10:45+02:00",
+            "realtime": false,
+            "fromPlace": {
+              "name": "Origin",
+              "quay": null
+            },
+            "toPlace": {
+              "name": "Storgata",
+              "quay": {
+                "publicCode": null
+              }
+            },
+            "line": null,
+            "situations": []
+          },
+          {
+            "mode": "tram",
+            "distance": 5269.0,
+            "duration": 1320,
+            "aimedStartTime": "2026-07-31T14:09:00+02:00",
+            "expectedStartTime": "2026-07-31T14:10:45+02:00",
+            "expectedEndTime": "2026-07-31T14:32:45+02:00",
+            "realtime": true,
+            "fromPlace": {
+              "name": "Storgata",
+              "quay": {
+                "publicCode": null
+              }
+            },
+            "toPlace": {
+              "name": "Forskningsparken T",
+              "quay": {
+                "publicCode": ""
+              }
+            },
+            "line": {
+              "publicCode": "17",
+              "name": "Rikshospitalet - Sinsen o/ Carl Berner",
+              "presentation": {
+                "colour": "0B91EF",
+                "textColour": "FFFFFF"
+              }
+            },
+            "situations": []
+          },
+          {
+            "mode": "foot",
+            "distance": 425.14,
+            "duration": 367,
+            "aimedStartTime": "2026-07-31T14:32:45+02:00",
+            "expectedStartTime": "2026-07-31T14:32:45+02:00",
+            "expectedEndTime": "2026-07-31T14:38:52+02:00",
+            "realtime": false,
+            "fromPlace": {
+              "name": "Forskningsparken T",
+              "quay": {
+                "publicCode": ""
+              }
+            },
+            "toPlace": {
+              "name": "Destination",
+              "quay": null
+            },
+            "line": null,
+            "situations": []
+          }
+        ]
+      },
+      {
+        "expectedStartTime": "2026-07-31T14:15:14+02:00",
+        "expectedEndTime": "2026-07-31T14:42:05+02:00",
+        "duration": 1611,
+        "walkDistance": 1113.56,
+        "legs": [
+          {
+            "mode": "foot",
+            "distance": 348.54,
+            "duration": 305,
+            "aimedStartTime": "2026-07-31T14:15:14+02:00",
+            "expectedStartTime": "2026-07-31T14:15:14+02:00",
+            "expectedEndTime": "2026-07-31T14:20:19+02:00",
+            "realtime": false,
+            "fromPlace": {
+              "name": "Origin",
+              "quay": null
+            },
+            "toPlace": {
+              "name": "Jernbanetorget",
+              "quay": {
+                "publicCode": "2"
+              }
+            },
+            "line": null,
+            "situations": []
+          },
+          {
+            "mode": "metro",
+            "distance": 5110.0,
+            "duration": 660,
+            "aimedStartTime": "2026-07-31T14:07:00+02:00",
+            "expectedStartTime": "2026-07-31T14:20:19+02:00",
+            "expectedEndTime": "2026-07-31T14:31:19+02:00",
+            "realtime": true,
+            "fromPlace": {
+              "name": "Jernbanetorget",
+              "quay": {
+                "publicCode": "2"
+              }
+            },
+            "toPlace": {
+              "name": "Gaustad",
+              "quay": {
+                "publicCode": "2"
+              }
+            },
+            "line": {
+              "publicCode": "1",
+              "name": "Frognerseteren - Bergkrystallen",
+              "presentation": {
+                "colour": "EC700C",
+                "textColour": "FFFFFF"
+              }
+            },
+            "situations": []
+          },
+          {
+            "mode": "foot",
+            "distance": 765.02,
+            "duration": 646,
+            "aimedStartTime": "2026-07-31T14:31:19+02:00",
+            "expectedStartTime": "2026-07-31T14:31:19+02:00",
+            "expectedEndTime": "2026-07-31T14:42:05+02:00",
+            "realtime": false,
+            "fromPlace": {
+              "name": "Gaustad",
+              "quay": {
+                "publicCode": "2"
+              }
+            },
+            "toPlace": {
+              "name": "Destination",
+              "quay": null
+            },
+            "line": null,
+            "situations": []
+          }
+        ]
+      }
+    ]
+  }
+}

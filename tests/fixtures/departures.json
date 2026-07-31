@@ -1,0 +1,138 @@
+{
+  "stopPlace": {
+    "id": "NSR:StopPlace:58366",
+    "name": "Jernbanetorget",
+    "estimatedCalls": [
+      {
+        "realtime": true,
+        "aimedDepartureTime": "2026-07-31T13:57:00+02:00",
+        "expectedDepartureTime": "2026-07-31T14:00:17+02:00",
+        "cancellation": false,
+        "destinationDisplay": {
+          "frontText": "Storo-Grefsen st."
+        },
+        "quay": {
+          "publicCode": "E"
+        },
+        "serviceJourney": {
+          "line": {
+            "publicCode": "18",
+            "name": "Grefsen st [4311] - Rikshospitalet",
+            "transportMode": "tram",
+            "presentation": {
+              "colour": "0B91EF",
+              "textColour": "FFFFFF"
+            },
+            "authority": {
+              "name": "Ruter"
+            }
+          }
+        }
+      },
+      {
+        "realtime": true,
+        "aimedDepartureTime": "2026-07-31T13:57:00+02:00",
+        "expectedDepartureTime": "2026-07-31T14:00:21+02:00",
+        "cancellation": false,
+        "destinationDisplay": {
+          "frontText": "Majorstuen"
+        },
+        "quay": {
+          "publicCode": "C"
+        },
+        "serviceJourney": {
+          "line": {
+            "publicCode": "19",
+            "name": "Ljabru - Majorstuen",
+            "transportMode": "tram",
+            "presentation": {
+              "colour": "0B91EF",
+              "textColour": "FFFFFF"
+            },
+            "authority": {
+              "name": "Ruter"
+            }
+          }
+        }
+      },
+      {
+        "realtime": true,
+        "aimedDepartureTime": "2026-07-31T13:58:00+02:00",
+        "expectedDepartureTime": "2026-07-31T14:00:27+02:00",
+        "cancellation": false,
+        "destinationDisplay": {
+          "frontText": "Simensbråten"
+        },
+        "quay": {
+          "publicCode": "H"
+        },
+        "serviceJourney": {
+          "line": {
+            "publicCode": "34X",
+            "name": "Jernbanetorget - Ekeberg",
+            "transportMode": "bus",
+            "presentation": {
+              "colour": "E60000",
+              "textColour": "FFFFFF"
+            },
+            "authority": {
+              "name": "Ruter"
+            }
+          }
+        }
+      },
+      {
+        "realtime": true,
+        "aimedDepartureTime": "2026-07-31T13:52:00+02:00",
+        "expectedDepartureTime": "2026-07-31T14:00:57+02:00",
+        "cancellation": false,
+        "destinationDisplay": {
+          "frontText": "Ellingsrudåsen"
+        },
+        "quay": {
+          "publicCode": "1"
+        },
+        "serviceJourney": {
+          "line": {
+            "publicCode": "2",
+            "name": "Østerås - Ellingsrudåsen",
+            "transportMode": "metro",
+            "presentation": {
+              "colour": "EC700C",
+              "textColour": "FFFFFF"
+            },
+            "authority": {
+              "name": "Ruter"
+            }
+          }
+        }
+      },
+      {
+        "realtime": true,
+        "aimedDepartureTime": "2026-07-31T14:01:00+02:00",
+        "expectedDepartureTime": "2026-07-31T14:01:00+02:00",
+        "cancellation": false,
+        "destinationDisplay": {
+          "frontText": "Kolbotn"
+        },
+        "quay": {
+          "publicCode": "R"
+        },
+        "serviceJourney": {
+          "line": {
+            "publicCode": "81X",
+            "name": "Buss for tog Oslo S - Kolbotn",
+            "transportMode": "bus",
+            "presentation": {
+              "colour": "E60000",
+              "textColour": "FFFFFF"
+            },
+            "authority": {
+              "name": "Ruter"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

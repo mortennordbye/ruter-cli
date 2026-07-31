@@ -1,0 +1,58 @@
+{
+  "nearest": {
+    "edges": [
+      {
+        "node": {
+          "distance": 43.51732426657747,
+          "place": {
+            "id": "NSR:StopPlace:61444",
+            "name": "Storgata",
+            "transportMode": [
+              "bus",
+              "tram"
+            ]
+          }
+        }
+      },
+      {
+        "node": {
+          "distance": 98.66050878001616,
+          "place": {
+            "id": "NSR:StopPlace:59621",
+            "name": "Hammersborggata",
+            "transportMode": [
+              "bus"
+            ]
+          }
+        }
+      },
+      {
+        "node": {
+          "distance": 255.5586068301654,
+          "place": {
+            "id": "NSR:StopPlace:58366",
+            "name": "Jernbanetorget",
+            "transportMode": [
+              "bus",
+              "metro",
+              "tram"
+            ]
+          }
+        }
+      },
+      {
+        "node": {
+          "distance": 377.3988272433518,
+          "place": {
+            "id": "NSR:StopPlace:61989",
+            "name": "Nybrua",
+            "transportMode": [
+              "bus",
+              "tram"
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
