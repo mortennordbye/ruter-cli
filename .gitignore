@@ -1,1 +1,16 @@
 /target
+
+# macOS
+.DS_Store
+
+# Editors / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local build artefacts from scripts/install-macos.sh
+Ruter.app/
+
+# Never commit the setup plan
+SETUP-PLAN.md

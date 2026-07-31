@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps):"
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # Grouped on purpose: there is no auto-merge on this repo, so ungrouped updates
+  # would mean one manual PR per crate per week. Majors stay individual.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps):"
+    groups:
+      cargo-minor-patch:
+        update-types: ["minor", "patch"]
