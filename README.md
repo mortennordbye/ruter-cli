@@ -194,7 +194,7 @@ ruter-cli/
 | Dependency Review | PR | blokkerer avhengigheter med kjente sårbarheter |
 | Scorecard | push, ukentlig | OpenSSF-vurdering av forsyningskjeden → Security-fanen |
 | Release Please | push til main | lager release-PR med CHANGELOG og versjonsbump |
-| Release Binaries | release publisert | bygger macOS universal + Linux x86_64/aarch64 og henger dem på releasen |
+| Release Binaries | kalles av Release Please | bygger macOS universal + Linux x86_64/aarch64, henger dem på releasen og tar den ut av draft til slutt |
 
 CI kjører på både `ubuntu-latest` og `macos-latest` med vilje: Core Location-koden i
 `src/location.rs` er `cfg`-gjemt bak macOS, så Linux-jobben beviser at `objc2`-avhengigheten

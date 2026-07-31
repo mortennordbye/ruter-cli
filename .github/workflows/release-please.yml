@@ -26,6 +26,7 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         id: release
@@ -43,3 +44,7 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.release.outputs.tag_name }}
+      # The release is created as a draft, so its tag does not exist yet — build the
+      # commit release-please released instead. release.yml publishes it once the
+      # assets are up, which is what finally creates the tag.
+      ref: ${{ needs.release.outputs.sha }}
