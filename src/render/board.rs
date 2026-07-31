@@ -1,6 +1,9 @@
 //! The one-shot boards printed to stdout.
 
-use super::{Rgb, Style, delay_marker, duration_human, hhmm, mode_label, place_name, relative};
+use super::{
+    LEG_PREFIX, RULE_WIDTH, Rgb, STOP_COLUMN, Style, delay_marker, duration_human, hhmm,
+    mode_label, pad, place_name, relative,
+};
 use crate::entur::nearest::{EstimatedCall, NearbyStop, StopPlace};
 use crate::entur::trip::{Leg, TripPattern};
 use crate::location::Origin;
@@ -9,13 +12,18 @@ use chrono::{DateTime, FixedOffset};
 const REALTIME: &str = "\u{25cf}"; // ●
 const SCHEDULED: &str = "\u{25cb}"; // ○
 
+fn rule(s: Style, heavy: bool) -> String {
+    let glyph = if heavy { "\u{2550}" } else { "\u{2500}" };
+    format!("  {}\n", s.dim(&glyph.repeat(RULE_WIDTH)))
+}
+
 /// Header shown above both boards.
 pub fn header(origin: &Origin, destination: &str, now: DateTime<FixedOffset>, s: Style) -> String {
+    let title = format!("{}  \u{2192}  {}", origin.name, destination);
     let mut out = format!(
-        "\n  {}  \u{2192}  {}{}\n",
-        s.bold(&origin.name),
-        s.bold(destination),
-        s.dim(&format!("   {}", hhmm(now)))
+        "\n  {}{}\n",
+        s.bold(&pad(&title, RULE_WIDTH.saturating_sub(5))),
+        s.dim(&hhmm(now))
     );
     if origin.source.is_coarse() {
         out.push_str(&format!(
@@ -26,6 +34,7 @@ pub fn header(origin: &Origin, destination: &str, now: DateTime<FixedOffset>, s:
             ))
         ));
     }
+    out.push_str(&rule(s, true));
     out
 }
 
@@ -43,8 +52,10 @@ pub fn trip_board(
         return out;
     }
 
-    for p in patterns {
-        out.push('\n');
+    for (i, p) in patterns.iter().enumerate() {
+        if i > 0 {
+            out.push_str(&rule(s, false));
+        }
         let marker = if p.has_realtime() { s.green(REALTIME) } else { s.dim(SCHEDULED) };
         let transfers = p.transit_legs().count().saturating_sub(1);
         let transfer_text = match transfers {
@@ -54,26 +65,25 @@ pub fn trip_board(
         };
 
         out.push_str(&format!(
-            "  {marker} {:<12} {} \u{2192} {}   {:<8} {}\n",
-            s.bold(&relative(p.expected_start_time, now)),
+            "  {marker} {} {} \u{2192} {}   {} {}\n",
+            s.bold(&pad(&relative(p.expected_start_time, now), 12)),
             hhmm(p.expected_start_time),
             hhmm(p.expected_end_time),
-            duration_human(p.duration),
+            pad(&duration_human(p.duration), 8),
             s.dim(&transfer_text),
         ));
 
         for leg in &p.legs {
             out.push_str(&leg_line(leg, &origin.name, destination, s));
         }
+    }
+    out.push_str(&rule(s, false));
 
-        for situation in p.legs.iter().flat_map(|l| &l.situations) {
-            if let Some(first) = situation.summary.first() {
-                out.push_str(&format!(
-                    "      {}\n",
-                    s.yellow(&format!("\u{26a0} {}", first.value))
-                ));
-            }
-        }
+    // Situations repeat across every journey that touches the affected stop, so the same
+    // notice would otherwise print three or four times. Collapse to one footnote each.
+    for (text, count) in situation_footnotes(patterns) {
+        let suffix = if count > 1 { format!(" ({count} reiser)") } else { String::new() };
+        out.push_str(&format!("  {}\n", s.yellow(&format!("\u{26a0} {text}{suffix}"))));
     }
 
     out.push_str(&format!(
@@ -83,17 +93,44 @@ pub fn trip_board(
     out
 }
 
+/// Distinct situation summaries, in first-seen order, with the number of journeys each
+/// affects. A situation attached to several legs of one journey still counts once.
+fn situation_footnotes(patterns: &[TripPattern]) -> Vec<(String, usize)> {
+    let mut order: Vec<String> = Vec::new();
+    let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+    for p in patterns {
+        let mut seen_here: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for situation in p.legs.iter().flat_map(|l| &l.situations) {
+            let Some(first) = situation.summary.first() else { continue };
+            let text = first.value.trim();
+            if text.is_empty() || !seen_here.insert(text) {
+                continue;
+            }
+            if !counts.contains_key(text) {
+                order.push(text.to_string());
+            }
+            *counts.entry(text.to_string()).or_default() += 1;
+        }
+    }
+
+    order
+        .into_iter()
+        .map(|text| {
+            let n = counts[&text];
+            (text, n)
+        })
+        .collect()
+}
+
 fn leg_line(leg: &Leg, origin: &str, destination: &str, s: Style) -> String {
     let to = place_name(leg.to_place.name.as_deref(), origin, destination);
 
     if !leg.is_transit() {
+        let text = format!("\u{21b3} {} {}", mode_label(&leg.mode), duration_human(leg.duration));
         return format!(
             "      {} {}\n",
-            s.dim(&format!(
-                "\u{21b3} {} {:<5}",
-                mode_label(&leg.mode),
-                duration_human(leg.duration)
-            )),
+            s.dim(&pad(&text, LEG_PREFIX)),
             s.dim(&format!("\u{2192} {to}"))
         );
     }
@@ -121,15 +158,18 @@ fn leg_line(leg: &Leg, origin: &str, destination: &str, s: Style) -> String {
     let realtime = if leg.realtime { s.green(REALTIME) } else { s.dim(SCHEDULED) };
     let delay = delay_marker(leg.delay_minutes(), s);
 
+    // The badge is a fixed five columns wide in both colour and plain mode, so the
+    // remaining widths are what keep the `→ destination` column straight.
+    let stop = pad(&format!("{from}{platform}"), STOP_COLUMN);
     format!(
-        "      {} {:<7} {}{} {} {} {}\n",
+        "      {} {} {} {} {} {} {}\n",
         s.badge(&badge_text, colour, text_colour),
-        mode_label(&leg.mode),
-        s.dim(from),
-        s.dim(&platform),
+        pad(mode_label(&leg.mode), 6),
+        s.dim(&stop),
         hhmm(leg.expected_start_time),
         realtime,
-        format_args!("{delay} {}", s.dim(&format!("\u{2192} {to}"))),
+        delay,
+        s.dim(&format!("\u{2192} {to}")),
     )
 }
 
@@ -146,11 +186,13 @@ pub fn near_board(
         return out;
     }
 
-    for (stop, board) in stops {
-        out.push('\n');
+    for (i, (stop, board)) in stops.iter().enumerate() {
+        if i > 0 {
+            out.push_str(&rule(s, false));
+        }
         out.push_str(&format!(
-            "  {}  {}\n",
-            s.bold(&stop.name),
+            "  {}{}\n",
+            s.bold(&pad(&stop.name, 28)),
             s.dim(&format!("{} m \u{00b7} {}", stop.distance_m, stop.modes.join(", ")))
         ));
 
@@ -163,6 +205,7 @@ pub fn near_board(
             out.push_str(&departure_line(call, now, s));
         }
     }
+    out.push_str(&rule(s, false));
 
     out.push_str(&format!(
         "\n  {}\n\n",
@@ -190,20 +233,20 @@ fn departure_line(call: &EstimatedCall, now: DateTime<FixedOffset>, s: Style) ->
 
     if call.cancellation {
         return format!(
-            "      {} {:<24} {:<8} {}\n",
+            "      {} {} {} {}\n",
             s.badge(&badge_text, colour, text_colour),
-            call.destination(),
-            s.dim(&platform),
+            pad(call.destination(), 26),
+            s.dim(&pad(&platform, 8)),
             s.red("AVLYST"),
         );
     }
 
     let realtime = if call.realtime { s.green(REALTIME) } else { s.dim(SCHEDULED) };
     format!(
-        "      {} {:<24} {:<8} {} {} {:<5} {}\n",
+        "      {} {} {} {} {} {} {}\n",
         s.badge(&badge_text, colour, text_colour),
-        call.destination(),
-        s.dim(&platform),
+        pad(call.destination(), 26),
+        s.dim(&pad(&platform, 8)),
         hhmm(call.expected_departure_time),
         realtime,
         delay_marker(call.delay_minutes(), s),
