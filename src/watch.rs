@@ -9,7 +9,10 @@ use crate::entur::Client;
 use crate::entur::nearest::{NearbyStop, StopPlace};
 use crate::entur::trip::TripPattern;
 use crate::location::Origin;
-use crate::render::{Rgb, delay_marker, duration_human, hhmm, mode_label, place_name, relative};
+use crate::render::{
+    LEG_PREFIX, RULE_WIDTH, Rgb, STOP_COLUMN, delay_marker, duration_human, hhmm, mode_label, pad,
+    place_name, relative,
+};
 use anyhow::Result;
 use chrono::{DateTime, FixedOffset, Local};
 use ratatui::Frame;
@@ -342,14 +345,16 @@ fn trip_lines(
         return vec![Line::from(dim("  Fant ingen reiser."))];
     }
     let mut lines = Vec::new();
-    for p in patterns {
-        lines.push(Line::from(""));
+    for (i, p) in patterns.iter().enumerate() {
+        if i > 0 {
+            lines.push(rule_line());
+        }
         lines.push(Line::from(vec![
             Span::raw("  "),
             realtime_span(p.has_realtime()),
             Span::raw(" "),
             Span::styled(
-                format!("{:<12}", relative(p.expected_start_time, now)),
+                pad(&relative(p.expected_start_time, now), 12),
                 TuiStyle::default().add_modifier(Modifier::BOLD),
             ),
             Span::raw(format!(
@@ -363,13 +368,12 @@ fn trip_lines(
         for leg in &p.legs {
             let to = place_name(leg.to_place.name.as_deref(), origin, destination).to_string();
             if !leg.is_transit() {
+                let text =
+                    format!("\u{21b3} {} {}", mode_label(&leg.mode), duration_human(leg.duration));
                 lines.push(Line::from(vec![
                     Span::raw("      "),
-                    dim(format!(
-                        "\u{21b3} {} {:<6} \u{2192} {to}",
-                        mode_label(&leg.mode),
-                        duration_human(leg.duration)
-                    )),
+                    dim(pad(&text, LEG_PREFIX)),
+                    dim(format!(" \u{2192} {to}")),
                 ]));
                 continue;
             }
@@ -387,9 +391,9 @@ fn trip_lines(
             lines.push(Line::from(vec![
                 Span::raw("      "),
                 Span::styled(format!(" {badge:^3} "), badge_style(colour, text_colour)),
-                Span::raw(format!(" {:<8}", mode_label(&leg.mode))),
-                dim(format!("{from:<20}")),
-                Span::raw(format!("{} ", hhmm(leg.expected_start_time))),
+                Span::raw(format!(" {} ", pad(mode_label(&leg.mode), 6))),
+                dim(pad(from, STOP_COLUMN)),
+                Span::raw(format!(" {} ", hhmm(leg.expected_start_time))),
                 realtime_span(leg.realtime),
                 Span::raw(" "),
                 delay_span(leg.delay_minutes()),
@@ -397,7 +401,13 @@ fn trip_lines(
             ]));
         }
     }
+    lines.push(rule_line());
     lines
+}
+
+/// Matches the rules the one-shot board draws, so the two views read the same.
+fn rule_line() -> Line<'static> {
+    dim("  ".to_string() + &"\u{2500}".repeat(RULE_WIDTH)).into()
 }
 
 fn near_lines(
@@ -408,12 +418,13 @@ fn near_lines(
         return vec![Line::from(dim("  Fant ingen holdeplasser i n\u{e6}rheten."))];
     }
     let mut lines = Vec::new();
-    for (stop, board) in stops {
-        lines.push(Line::from(""));
+    for (i, (stop, board)) in stops.iter().enumerate() {
+        if i > 0 {
+            lines.push(rule_line());
+        }
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(stop.name.clone(), TuiStyle::default().add_modifier(Modifier::BOLD)),
-            Span::raw("  "),
+            Span::styled(pad(&stop.name, 28), TuiStyle::default().add_modifier(Modifier::BOLD)),
             dim(format!("{} m \u{b7} {}", stop.distance_m, stop.modes.join(", "))),
         ]));
 
@@ -441,7 +452,7 @@ fn near_lines(
                 lines.push(Line::from(vec![
                     Span::raw("      "),
                     Span::styled(format!(" {badge:^3} "), badge_style(colour, text_colour)),
-                    Span::raw(format!(" {:<24}", call.destination())),
+                    Span::raw(format!(" {} ", pad(call.destination(), 26))),
                     Span::styled("AVLYST", TuiStyle::default().fg(Color::Red)),
                 ]));
                 continue;
@@ -450,7 +461,7 @@ fn near_lines(
             lines.push(Line::from(vec![
                 Span::raw("      "),
                 Span::styled(format!(" {badge:^3} "), badge_style(colour, text_colour)),
-                Span::raw(format!(" {:<24}", call.destination())),
+                Span::raw(format!(" {} ", pad(call.destination(), 26))),
                 Span::raw(format!("{} ", hhmm(call.expected_departure_time))),
                 realtime_span(call.realtime),
                 Span::raw(" "),
@@ -507,6 +518,29 @@ mod tests {
             serde_json::from_str(include_str!("../tests/fixtures/trip.json")).unwrap();
         let lines = trip_lines(&resp.trip.trip_patterns, now(), "Storgata", "Hjemme");
         assert!(!lines.is_empty());
+    }
+
+    /// The watch view cannot be eyeballed the way the one-shot board can, so the column
+    /// layout is pinned here instead: walking and transit legs must put `→` in the same
+    /// place, which is the whole point of padding them to `LEG_PREFIX`.
+    #[test]
+    fn itinerary_legs_share_one_destination_column() {
+        let resp: TripResponse =
+            serde_json::from_str(include_str!("../tests/fixtures/trip.json")).unwrap();
+        let lines = trip_lines(&resp.trip.trip_patterns, now(), "Storgata", "Hjemme");
+
+        let columns: Vec<usize> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+            .filter(|text| text.starts_with("      ") && text.contains('\u{2192}'))
+            .map(|text| text.chars().take_while(|c| *c != '\u{2192}').count())
+            .collect();
+
+        assert!(!columns.is_empty(), "expected itinerary legs in the fixture");
+        assert!(
+            columns.windows(2).all(|w| w[0] == w[1]),
+            "destination arrows are not in one column: {columns:?}"
+        );
     }
 
     #[test]

@@ -123,6 +123,27 @@ impl Style {
     }
 }
 
+/// Shared column layout for the one-shot boards and the `--watch` view, so the two
+/// surfaces line up identically.
+///
+/// Fixed rather than read from the terminal: nothing else in this crate queries the
+/// terminal size, and a rule wider than the window merely wraps.
+pub const RULE_WIDTH: usize = 72;
+
+/// Everything left of the `→ destination` column on an itinerary line. Walking and
+/// transit legs pad to this same width so the destinations form a single column.
+///
+/// A transit leg spends `STOP_COLUMN` of it on the stop name and the rest on the fixed
+/// fields: badge 5, mode 6, time 5, realtime marker 1, delay 3, plus five separators.
+pub const LEG_PREFIX: usize = 48;
+pub const STOP_COLUMN: usize = LEG_PREFIX - 25;
+
+/// Pad before styling. ANSI escapes count toward `{:<n}`, so padding an already-styled
+/// string silently misaligns every column as soon as colour is on.
+pub fn pad(text: &str, width: usize) -> String {
+    format!("{text:<width$}")
+}
+
 /// `14:07`
 pub fn hhmm(t: DateTime<FixedOffset>) -> String {
     t.format("%H:%M").to_string()
@@ -159,12 +180,15 @@ pub fn duration_human(seconds: i64) -> String {
 ///
 /// Anything under a minute is suppressed: a bus 40 seconds behind schedule is
 /// on time as far as a person waiting at the stop is concerned.
+///
+/// Always three columns wide, including when there is no delay to show. The callers
+/// print it mid-line, so a variable width here shifts every column after it.
 pub fn delay_marker(delay_minutes: i64, style: Style) -> String {
     match delay_minutes {
-        0 => String::new(),
-        d if d >= 5 => style.red(&format!("+{d}")),
-        d if d > 0 => style.yellow(&format!("+{d}")),
-        d => style.cyan(&format!("{d}")),
+        0 => "   ".to_string(),
+        d if d >= 5 => style.red(&format!("{:<3}", format!("+{d}"))),
+        d if d > 0 => style.yellow(&format!("{:<3}", format!("+{d}"))),
+        d => style.cyan(&format!("{d:<3}")),
     }
 }
 
@@ -293,10 +317,11 @@ mod tests {
     #[test]
     fn sub_minute_delays_are_suppressed() {
         let s = Style::plain();
-        assert_eq!(delay_marker(0, s), "");
-        assert_eq!(delay_marker(1, s), "+1");
-        assert_eq!(delay_marker(5, s), "+5");
-        assert_eq!(delay_marker(-2, s), "-2");
+        // Padded to a fixed three columns so it does not shift the columns after it.
+        assert_eq!(delay_marker(0, s), "   ");
+        assert_eq!(delay_marker(1, s), "+1 ");
+        assert_eq!(delay_marker(5, s), "+5 ");
+        assert_eq!(delay_marker(-2, s), "-2 ");
     }
 
     #[test]

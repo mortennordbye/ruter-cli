@@ -18,17 +18,18 @@ Norge. Navnet kommer av at det er skrevet for daglig bruk i Oslo, der Ruter er o
 ---
 
 ```
-  Oslo S  →  Hjemme   14:14
-
-  ● om 2 min     14:16 → 14:34   18 min   direkte
-      ↳ gå 3 min → Jernbanetorget
-      [18 ] trikk   Jernbanetorget spor F 14:19 ●     → Holbergs plass
-      ↳ gå 10 min → Ullevålsveien 15, Oslo
-
-  ● om 5 min     14:19 → 14:38   19 min   direkte
-      ↳ gå 2 min → Jernbanetorget
-      [37 ] buss    Jernbanetorget spor A 14:21 ● +1  → Stensberggata
-      ↳ gå 4 min → Ullevålsveien 15, Oslo
+  Oslo City, Oslo  →  Ullevålsveien 15, Oslo                         15:53
+  ════════════════════════════════════════════════════════════════════════
+  ● om 2 min     15:55 → 16:12   18 min   direkte
+      ↳ gå 3 min                                       → Jernbanetorget
+      [ 3 ] T-bane Jernbanetorget spor 2   15:58 ●     → Stortinget
+      ↳ gå 13 min                                      → Ullevålsveien 15, Oslo
+  ────────────────────────────────────────────────────────────────────────
+  ● om 5 min     15:58 → 16:16   18 min   direkte
+      ↳ gå 3 min                                       → Storgata
+      [54 ] buss   Storgata                16:01 ● +2  → Møllerveien
+      ↳ gå 11 min                                      → Ullevålsveien 15, Oslo
+  ────────────────────────────────────────────────────────────────────────
 ```
 
 ## Kom i gang
