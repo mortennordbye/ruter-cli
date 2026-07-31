@@ -1,0 +1,27 @@
+name: Release Please
+
+# release-please reads the Conventional Commit history on main and opens a PR that bumps
+# the version and updates CHANGELOG.md; merging that PR cuts the tag and the GitHub
+# release. This repo uses the light profile, which has no PR-title check and allows direct
+# pushes to main — so the version it computes is only as correct as the commit messages
+# written by hand. See CONTRIBUTING notes in README.md.
+
+on:
+  push:
+    branches: [main]
+
+# Read-only at the top level, write scoped to the job that needs it. A workflow-wide write
+# token is handed to every job and every step in it, including any action added later;
+# Scorecard's Token-Permissions check scores exactly this.
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5

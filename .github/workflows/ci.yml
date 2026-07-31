@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,6 +18,7 @@ env:
 
 jobs:
   fmt:
+    name: Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -27,6 +29,7 @@ jobs:
   # really is optional, and the macOS job is the only one that compiles and
   # lints the unsafe CoreLocation code at all.
   check:
+    name: Lint & test
     strategy:
       fail-fast: false
       matrix:
