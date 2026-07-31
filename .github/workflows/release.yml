@@ -1,16 +1,25 @@
 name: Release Binaries
 
-# release-please cuts the tag and publishes the GitHub Release; this attaches the
-# binaries to it. Triggering on `release: published` rather than on the tag itself means
-# the release page is already there to upload to, and a re-run cannot race it.
+# Called by release-please.yml once it has cut a release, and runnable by hand to
+# backfill assets onto an existing tag.
+#
+# Deliberately NOT triggered by `release: published` or by a `v*` tag push: release-please
+# creates both using GITHUB_TOKEN, and GitHub does not start new workflow runs from events
+# raised by that token. A `release: published` trigger here looks correct and silently
+# never fires. Being called directly keeps it inside the same run, which has no such rule.
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag to build and attach assets to
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to build and attach to (e.g. v0.2.0)
+        description: Existing tag to build and attach assets to (e.g. v0.2.0)
         required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ inputs.tag }}
       - uses: Swatinem/rust-cache@v2
 
       - name: Build both architectures
@@ -43,8 +52,8 @@ jobs:
           lipo -info ruter
           otool -s __TEXT __info_plist ruter | head -2
 
-      # Shipped as an .app bundle because that is what lets Core Location grant this
-      # tool its own Location Services permission; a bare binary never gets prompted.
+      # Shipped as an .app bundle because that is what lets Core Location grant this tool
+      # its own Location Services permission; a bare binary never gets prompted at all.
       # See scripts/install-macos.sh and the README for the full explanation.
       - name: Assemble Ruter.app
         run: |
@@ -57,29 +66,11 @@ jobs:
       - name: Package
         id: package
         run: |
-          tag="${{ github.event.inputs.tag || github.ref_name }}"
-          name="ruter-${tag}-macos-universal"
+          name="ruter-${{ inputs.tag }}-macos-universal"
           mkdir -p "dist/$name"
           cp -R Ruter.app "dist/$name/"
           cp README.md LICENSE "dist/$name/"
-          cat > "dist/$name/install.sh" <<'SH'
-          #!/bin/bash
-          # Installs Ruter.app and symlinks `ruter` onto your PATH.
-          set -euo pipefail
-          SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          APP="${RUTER_APP_DIR:-$HOME/Applications/Ruter.app}"
-          BIN="${RUTER_BIN_DIR:-$HOME/.local/bin}"
-          rm -rf "$APP"; mkdir -p "$(dirname "$APP")" "$BIN"
-          cp -R "$SRC/Ruter.app" "$APP"
-          # Re-sign locally: the Location Services grant is keyed to the signature, and
-          # copying the bundle does not carry the CI signature's identity across.
-          codesign --force --sign - "$APP" >/dev/null 2>&1 || true
-          xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
-          ln -sf "$APP/Contents/MacOS/ruter" "$BIN/ruter"
-          echo "Installert. $BIN/ruter -> $APP/Contents/MacOS/ruter"
-          printf '%s' ":$PATH:" | grep -q ":$BIN:" || echo "OBS: $BIN ligger ikke i PATH."
-          echo "Kjor 'ruter where' for a sjekke posisjonen."
-          SH
+          cp .github/release-assets/install-macos.sh "dist/$name/install.sh"
           chmod +x "dist/$name/install.sh"
           tar -czf "$name.tar.gz" -C dist "$name"
           shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
@@ -87,7 +78,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ inputs.tag }}
           files: |
             ${{ steps.package.outputs.asset }}.tar.gz
             ${{ steps.package.outputs.asset }}.tar.gz.sha256
@@ -112,7 +103,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ inputs.tag }}
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
@@ -121,8 +112,7 @@ jobs:
       - name: Package
         id: package
         run: |
-          tag="${{ github.event.inputs.tag || github.ref_name }}"
-          name="ruter-${tag}-linux-${{ matrix.arch }}"
+          name="ruter-${{ inputs.tag }}-linux-${{ matrix.arch }}"
           mkdir -p "dist/$name"
           cp target/${{ matrix.target }}/release/ruter "dist/$name/"
           cp README.md LICENSE "dist/$name/"
@@ -132,7 +122,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ inputs.tag }}
           files: |
             ${{ steps.package.outputs.asset }}.tar.gz
             ${{ steps.package.outputs.asset }}.tar.gz.sha256
