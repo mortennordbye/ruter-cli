@@ -1,0 +1,138 @@
+name: Release Binaries
+
+# release-please cuts the tag and publishes the GitHub Release; this attaches the
+# binaries to it. Triggering on `release: published` rather than on the tag itself means
+# the release page is already there to upload to, and a re-run cannot race it.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and attach to (e.g. v0.2.0)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS universal
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build both architectures
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+
+      # One download instead of asking people to know their own CPU. Each slice carries
+      # its own __TEXT,__info_plist section from build.rs, and lipo preserves it.
+      - name: Combine into a universal binary
+        run: |
+          lipo -create -output ruter \
+            target/aarch64-apple-darwin/release/ruter \
+            target/x86_64-apple-darwin/release/ruter
+          lipo -info ruter
+          otool -s __TEXT __info_plist ruter | head -2
+
+      # Shipped as an .app bundle because that is what lets Core Location grant this
+      # tool its own Location Services permission; a bare binary never gets prompted.
+      # See scripts/install-macos.sh and the README for the full explanation.
+      - name: Assemble Ruter.app
+        run: |
+          mkdir -p Ruter.app/Contents/MacOS
+          cp macos/Info.plist Ruter.app/Contents/Info.plist
+          cp ruter Ruter.app/Contents/MacOS/ruter
+          codesign --force --sign - Ruter.app
+          codesign --verify --verbose Ruter.app
+
+      - name: Package
+        id: package
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          name="ruter-${tag}-macos-universal"
+          mkdir -p "dist/$name"
+          cp -R Ruter.app "dist/$name/"
+          cp README.md LICENSE "dist/$name/"
+          cat > "dist/$name/install.sh" <<'SH'
+          #!/bin/bash
+          # Installs Ruter.app and symlinks `ruter` onto your PATH.
+          set -euo pipefail
+          SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          APP="${RUTER_APP_DIR:-$HOME/Applications/Ruter.app}"
+          BIN="${RUTER_BIN_DIR:-$HOME/.local/bin}"
+          rm -rf "$APP"; mkdir -p "$(dirname "$APP")" "$BIN"
+          cp -R "$SRC/Ruter.app" "$APP"
+          # Re-sign locally: the Location Services grant is keyed to the signature, and
+          # copying the bundle does not carry the CI signature's identity across.
+          codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+          xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
+          ln -sf "$APP/Contents/MacOS/ruter" "$BIN/ruter"
+          echo "Installert. $BIN/ruter -> $APP/Contents/MacOS/ruter"
+          printf '%s' ":$PATH:" | grep -q ":$BIN:" || echo "OBS: $BIN ligger ikke i PATH."
+          echo "Kjor 'ruter where' for a sjekke posisjonen."
+          SH
+          chmod +x "dist/$name/install.sh"
+          tar -czf "$name.tar.gz" -C dist "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+          echo "asset=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            ${{ steps.package.outputs.asset }}.tar.gz
+            ${{ steps.package.outputs.asset }}.tar.gz.sha256
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native runners on purpose: cross-compiling rustls' `ring` needs a C
+          # cross-toolchain, which is a lot of yak-shaving to avoid two cheap runners.
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        id: package
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          name="ruter-${tag}-linux-${{ matrix.arch }}"
+          mkdir -p "dist/$name"
+          cp target/${{ matrix.target }}/release/ruter "dist/$name/"
+          cp README.md LICENSE "dist/$name/"
+          tar -czf "$name.tar.gz" -C dist "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          echo "asset=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            ${{ steps.package.outputs.asset }}.tar.gz
+            ${{ steps.package.outputs.asset }}.tar.gz.sha256

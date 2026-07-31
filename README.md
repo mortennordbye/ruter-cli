@@ -33,16 +33,38 @@ Norge. Navnet kommer av at det er skrevet for daglig bruk i Oslo, der Ruter er o
 
 ## Kom i gang
 
-På macOS, bruk installasjonsskriptet — det er det som gjør at GPS virker (se under):
+### Ferdigbygde binærfiler
+
+Hver release har binærfiler under [Releases](https://github.com/mortennordbye/ruter-cli/releases):
+én universal build for macOS (Apple Silicon og Intel i samme fil), og Linux x86_64 og aarch64.
 
 ```sh
-./scripts/install-macos.sh
+tar -xzf ruter-vX.Y.Z-macos-universal.tar.gz
+cd ruter-vX.Y.Z-macos-universal
+./install.sh
+```
 
+macOS-arkivet inneholder `Ruter.app` fordi det er det som gir verktøyet egen tilgang til
+stedstjenester — se forklaringen under. `install.sh` kopierer bundlet til
+`~/Applications`, signerer det lokalt på nytt og symlenker `~/.local/bin/ruter`.
+Linux-arkivene inneholder bare binærfilen; legg den hvor du vil.
+
+Binærfilene er ad-hoc-signert, ikke notarisert. Lastet ned med `curl` er det uproblematisk;
+laster du ned via nettleser setter den karanteneflagget, og `install.sh` fjerner det.
+
+### Bygge selv
+
+```sh
+./scripts/install-macos.sh          # macOS — bygger og setter opp app-bundlet
+cargo install --path .              # Linux, eller hvis du ikke trenger GPS
+```
+
+### Så
+
+```sh
 ruter config add hjem "Ullevålsveien 15, Oslo"
 ruter hjem
 ```
-
-På Linux, eller hvis du ikke bryr deg om GPS: `cargo install --path .`
 
 `config add` slår opp adressen i Entur sin geokoder og lagrer koordinatene, så du slipper å
 skrive inn lengde- og breddegrad selv.
@@ -152,6 +174,7 @@ ruter-cli/
 | Dependency Review | PR | blokkerer avhengigheter med kjente sårbarheter |
 | Scorecard | push, ukentlig | OpenSSF-vurdering av forsyningskjeden → Security-fanen |
 | Release Please | push til main | lager release-PR med CHANGELOG og versjonsbump |
+| Release Binaries | release publisert | bygger macOS universal + Linux x86_64/aarch64 og henger dem på releasen |
 
 CI kjører på både `ubuntu-latest` og `macos-latest` med vilje: Core Location-koden i
 `src/location.rs` er `cfg`-gjemt bak macOS, så Linux-jobben beviser at `objc2`-avhengigheten
