@@ -164,11 +164,21 @@ fn ip_location(client: &Client) -> Result<Coord> {
 // GPS
 // ---------------------------------------------------------------------------
 
+/// Authorization status as observed during the last real GPS attempt.
+///
+/// A freshly constructed `CLLocationManager` reports `NotDetermined` until
+/// something asks it for a position, so `ruter where` would otherwise claim
+/// macOS had never prompted on a machine where GPS demonstrably works. -1 means
+/// no attempt has been made this process.
+#[cfg(target_os = "macos")]
+static LAST_AUTH_STATUS: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
 /// `Ok(None)` means "no fix within the timeout" rather than a hard failure.
 #[cfg(target_os = "macos")]
 fn gps() -> Result<Option<Coord>> {
     use objc2_core_location::{CLAuthorizationStatus, CLLocationManager};
     use objc2_foundation::{NSDate, NSRunLoop};
+    use std::sync::atomic::Ordering;
     use std::time::{Duration, Instant};
 
     const TIMEOUT: Duration = Duration::from_secs(4);
@@ -190,6 +200,7 @@ fn gps() -> Result<Option<Coord>> {
 
         manager.requestWhenInUseAuthorization();
         manager.startUpdatingLocation();
+        LAST_AUTH_STATUS.store(manager.authorizationStatus().0, Ordering::Relaxed);
 
         // No delegate: CLLocationManager publishes the most recent fix on its
         // `location` property, so we can pump the run loop and poll it. That
@@ -208,6 +219,7 @@ fn gps() -> Result<Option<Coord>> {
             }
         }
         manager.stopUpdatingLocation();
+        LAST_AUTH_STATUS.store(manager.authorizationStatus().0, Ordering::Relaxed);
 
         if found.is_none() {
             bail!("tidsavbrudd. {}", permission_hint());
@@ -216,16 +228,72 @@ fn gps() -> Result<Option<Coord>> {
     }
 }
 
-/// macOS attributes a CLI tool's location request to the *terminal app* that
-/// launched it, not to the binary, so the hint has to name that app to be
-/// actionable. `TERM_PROGRAM` is how we find out which one it is.
+/// Explain how to get a Location Services grant.
+///
+/// macOS will not prompt for a process it cannot name. A bare binary has no
+/// bundle identity, and the request then gets attributed to whichever process
+/// launched it — if that process declares no location usage description, the
+/// prompt is suppressed silently and Core Location just never returns anything.
+/// `scripts/install-macos.sh` fixes this by installing into a small .app bundle.
 #[cfg(target_os = "macos")]
 fn permission_hint() -> String {
-    let app = std::env::var("TERM_PROGRAM").unwrap_or_else(|_| "terminalen din".to_string());
-    format!(
-        "gi {app} tilgang under Systeminnstillinger > Personvern og sikkerhet > \
-         Stedstjenester, og start den p\u{e5} nytt. Bruk `--no-gps` for \u{e5} hoppe over dette."
-    )
+    "kj\u{f8}r `scripts/install-macos.sh` for \u{e5} installere ruter som app-bundle, \
+     som er det som gir den egen tilgang til stedstjenester. \
+     Se s\u{e5} etter «ruter» under Systeminnstillinger > Personvern og sikkerhet > \
+     Stedstjenester. Bruk `--no-gps` for \u{e5} hoppe over GPS."
+        .to_string()
+}
+
+/// Human-readable Core Location state, for `ruter where`.
+///
+/// Call this *after* attempting to resolve a position: the authorization status
+/// stays `NotDetermined` until something actually asks, so reading it first
+/// reports "not determined" even on a machine where GPS works fine.
+#[cfg(target_os = "macos")]
+pub fn gps_diagnostics() -> Vec<(String, String)> {
+    use objc2_core_location::{CLAuthorizationStatus, CLLocationManager};
+    use std::sync::atomic::Ordering;
+
+    let raw = match LAST_AUTH_STATUS.load(Ordering::Relaxed) {
+        -1 => unsafe { CLLocationManager::new().authorizationStatus().0 },
+        observed => observed,
+    };
+    let status_text = match CLAuthorizationStatus(raw) {
+        CLAuthorizationStatus::NotDetermined => {
+            "ikke avgjort \u{2014} macOS har ikke spurt enn\u{e5}"
+        }
+        CLAuthorizationStatus::Restricted => "begrenset av systemet",
+        CLAuthorizationStatus::Denied => "avsl\u{e5}tt",
+        CLAuthorizationStatus::AuthorizedAlways => "innvilget (alltid)",
+        CLAuthorizationStatus::AuthorizedWhenInUse => "innvilget (ved bruk)",
+        other => return vec![("Stedstjenester".into(), format!("ukjent status {}", other.0))],
+    };
+
+    // current_exe() can hand back the symlink that was invoked rather than the
+    // real path inside the bundle, so resolve it before looking for the bundle
+    // layout — otherwise a correctly installed ruter reports itself as unbundled.
+    let bundled = std::env::current_exe()
+        .and_then(|p| p.canonicalize())
+        .map(|p| p.to_string_lossy().contains(".app/Contents/MacOS/"))
+        .unwrap_or(false);
+
+    vec![
+        ("Stedstjenester".to_string(), status_text.to_string()),
+        (
+            "Kjører som app-bundle".to_string(),
+            if bundled {
+                "ja".to_string()
+            } else {
+                "nei \u{2014} kjør scripts/install-macos.sh, ellers spør ikke macOS om tilgang"
+                    .to_string()
+            },
+        ),
+    ]
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn gps_diagnostics() -> Vec<(String, String)> {
+    vec![("Stedstjenester".to_string(), "st\u{f8}ttes bare på macOS".to_string())]
 }
 
 #[cfg(not(target_os = "macos"))]

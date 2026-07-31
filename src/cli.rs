@@ -13,7 +13,8 @@ use clap::{Args, Parser, Subcommand};
         ruter hjem                 reise fra der du er n\u{e5} til \"hjem\"\n  \
         ruter hjem --watch         samme, men oppdaterer seg selv\n  \
         ruter near                 avganger fra holdeplasser i n\u{e6}rheten\n  \
-        ruter --from jobb hjem     reise mellom to lagrede steder"
+        ruter --from jobb hjem     reise mellom to lagrede steder\n  \
+        ruter where                sjekk posisjonen og hvor den kommer fra"
 )]
 pub struct Cli {
     /// Destination: a saved place, "lat,lon", or an address to look up.
@@ -90,6 +91,9 @@ pub enum Command {
         #[command(subcommand)]
         action: ConfigAction,
     },
+
+    /// Show where ruter thinks you are, and why. Useful when GPS misbehaves.
+    Where,
 }
 
 #[derive(Debug, Subcommand)]

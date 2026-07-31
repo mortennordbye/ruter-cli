@@ -21,12 +21,16 @@ Norge. Navnet kommer av at det er skrevet for daglig bruk i Oslo, der Ruter er o
 
 ## Kom i gang
 
+På macOS, bruk installasjonsskriptet — det er det som gjør at GPS virker (se under):
+
 ```sh
-cargo install --path .
+./scripts/install-macos.sh
 
 ruter config add hjem "Ullevålsveien 15, Oslo"
 ruter hjem
 ```
+
+På Linux, eller hvis du ikke bryr deg om GPS: `cargo install --path .`
 
 `config add` slår opp adressen i Entur sin geokoder og lagrer koordinatene, så du slipper å
 skrive inn lengde- og breddegrad selv.
@@ -41,6 +45,7 @@ skrive inn lengde- og breddegrad selv.
 | `ruter --from jobb hjem` | reise mellom to lagrede steder |
 | `ruter "Oslo S"` | destinasjonen kan også være en adresse eller `59.91,10.75` |
 | `ruter hjem --json` | rå JSON, for skripting |
+| `ruter where` | hvor den tror du er, og hvilken kilde den brukte |
 
 Nyttige flagg: `-n` antall resultater, `--modes bus,tram` for å begrense transportmidler,
 `--no-gps` / `--no-ip` for å skru av posisjonskilder, `--color auto\|always\|never`.
@@ -56,13 +61,33 @@ Kildene prøves i denne rekkefølgen, og den første som svarer vinner:
 3. IP-oppslag via ipinfo.io
 4. `default_origin` fra konfigurasjonen
 
-**Om GPS på macOS:** stedstjenester tildeles terminalappen som startet prosessen, ikke selve
-binærfilen. Du må gi f.eks. Ghostty eller Terminal tilgang under *Systeminnstillinger → Personvern
-og sikkerhet → Stedstjenester*, og starte den på nytt. Uten dette venter `ruter` i fire sekunder
-før den faller tilbake til IP — bruk `--no-gps` hvis du vil hoppe over forsøket.
+Kjør `ruter where` for å se hva den faktisk fant, og hvorfor.
 
-**IP-oppslag er grovt.** Under utviklingen ga to ulike tjenester svar som lå 55 km fra hverandre på
-samme tilkobling. Derfor merkes alltid resultatet med en advarsel når posisjonen kommer derfra.
+### Hvorfor GPS trenger et app-bundle på macOS
+
+En vanlig kommandolinje-binærfil har ingen bundle-identitet. `Bundle.main.bundleIdentifier` er
+`nil`, og da har macOS ingenting å knytte en tillatelse til: forespørselen blir i stedet tilskrevet
+prosessen som startet den. Har ikke *den* prosessen en `NSLocationUsageDescription`, blir dialogen
+undertrykt i stillhet, og Core Location returnerer aldri noe. Ingen feilmelding, bare tomt.
+
+To ting løser dette, og `scripts/install-macos.sh` gjør begge:
+
+1. `build.rs` limer `macos/Info.plist` inn i `__TEXT,__info_plist`-seksjonen i binærfilen, som gir
+   den en `CFBundleIdentifier`.
+2. Skriptet installerer binærfilen i et lite `Ruter.app`-bundle og symlenker `~/.local/bin/ruter`
+   dit, slik at den får sin egen oppføring i Stedstjenester i stedet for å arve terminalens.
+
+Bundlet er ikke en GUI-app — det er bare mappestrukturen macOS krever for å kjenne igjen en
+identitet. Symlenken funker fint; `ruter` oppfører seg som en helt vanlig kommando.
+
+Etter installasjon dukker «ruter» opp under *Systeminnstillinger → Personvern og sikkerhet →
+Stedstjenester*. Uten GPS venter `ruter` i fire sekunder før den faller tilbake til IP; `--no-gps`
+hopper over forsøket.
+
+**IP-oppslag er grovt.** På denne maskinen ga IP-oppslaget Stortorvet mens GPS ga Brekkelia — 5 km
+unna, altså helt andre holdeplasser. To ulike IP-tjenester ga dessuten svar som lå 55 km fra
+hverandre på samme tilkobling. Derfor merkes resultatet alltid med en advarsel når posisjonen
+kommer derfra.
 
 ## Konfigurasjon
 

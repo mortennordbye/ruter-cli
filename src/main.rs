@@ -48,6 +48,7 @@ fn run(cli: Cli) -> Result<()> {
         Some(Command::Near { radius, stops }) => {
             cmd_near(&client, &config, &cli.common, style, radius, stops)
         }
+        Some(Command::Where) => cmd_where(&client, &config, &cli.common, style),
         None => cmd_trip(&client, &config, &cli.common, style, cli.destination),
     }
 }
@@ -155,6 +156,44 @@ pub fn fetch_near(
             Ok((stop, board))
         })
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// ruter where
+// ---------------------------------------------------------------------------
+
+fn cmd_where(client: &Client, config: &Config, common: &Common, style: Style) -> Result<()> {
+    // Resolve first: the Core Location authorization status only becomes
+    // meaningful once something has actually asked for a position.
+    let opts = Options { no_gps: common.no_gps, no_ip: common.no_ip };
+    let resolved = resolve_origin(client, config, common.from.as_deref(), opts);
+
+    let mut out = String::from("\n");
+    for (key, value) in location::gps_diagnostics() {
+        out.push_str(&format!("  {:<22} {value}\n", format!("{key}:")));
+    }
+
+    match resolved {
+        Ok(origin) => {
+            out.push_str(&format!("  {:<22} {}\n", "Posisjon:", style.bold(&origin.name)));
+            out.push_str(&format!(
+                "  {:<22} {:.5}, {:.5}\n",
+                "Koordinater:", origin.coord.lat, origin.coord.lon
+            ));
+            out.push_str(&format!("  {:<22} {}\n", "Kilde:", origin.source.label()));
+            if origin.source.is_coarse() {
+                out.push_str(&format!(
+                    "\n  {}\n",
+                    style.yellow(
+                        "\u{26a0} Dette er et IP-oppslag og kan bomme med flere kilometer."
+                    )
+                ));
+            }
+        }
+        Err(e) => out.push_str(&format!("  {:<22} {e:#}\n", "Posisjon:")),
+    }
+    out.push('\n');
+    emit(&out)
 }
 
 // ---------------------------------------------------------------------------
