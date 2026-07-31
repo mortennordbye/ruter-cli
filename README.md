@@ -1,9 +1,21 @@
-# ruter-cli
+<div align="center">
 
-Neste avgang med buss, trikk, T-bane og tog — fra der du står, i terminalen.
+# 🚋 ruter-cli
+
+### Neste avgang med buss, trikk, T-bane og tog — fra der du står, i terminalen.
+
+[![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](https://www.rust-lang.org) [![Ratatui](https://img.shields.io/badge/Ratatui-2E3440?logo=rust&logoColor=white)](https://ratatui.rs) [![Entur](https://img.shields.io/badge/Entur%20API-1A1A1A?logo=graphql&logoColor=E10098)](https://developer.entur.org/) [![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)](https://www.apple.com/macos/)
+
+[![CI](https://github.com/mortennordbye/ruter-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/mortennordbye/ruter-cli/actions/workflows/ci.yml) [![Scorecard](https://github.com/mortennordbye/ruter-cli/actions/workflows/scorecard.yml/badge.svg)](https://github.com/mortennordbye/ruter-cli/actions/workflows/scorecard.yml) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/mortennordbye/ruter-cli/badge)](https://securityscorecards.dev/viewer/?uri=github.com/mortennordbye/ruter-cli)
+
+[![License](https://img.shields.io/github/license/mortennordbye/ruter-cli?style=flat-square)](LICENSE) [![Last Commit](https://img.shields.io/github/last-commit/mortennordbye/ruter-cli?style=flat-square)](https://github.com/mortennordbye/ruter-cli/commits/main) [![Stars](https://img.shields.io/github/stars/mortennordbye/ruter-cli?style=flat-square)](https://github.com/mortennordbye/ruter-cli/stargazers)
 
 Bygget på [Entur](https://developer.entur.org/) sitt åpne Journey Planner-API, så det dekker hele
 Norge. Navnet kommer av at det er skrevet for daglig bruk i Oslo, der Ruter er operatøren.
+
+</div>
+
+---
 
 ```
   Oslo S  →  Hjemme   14:14
@@ -111,16 +123,79 @@ lon = 10.742684
 Sett gjerne din egen `client_name`. Entur krever at klienter identifiserer seg, og anonyme
 forespørsler blir rate-limitet hardere.
 
+---
+
+## Kodestruktur
+
+```text
+ruter-cli/
+├── src/
+│   ├── main.rs        # CLI-dispatch, exit-koder, stdout
+│   ├── cli.rs         # clap-definisjoner
+│   ├── config.rs      # TOML-config og lagrede steder
+│   ├── location.rs    # posisjonskjeden, inkl. Core Location
+│   ├── watch.rs       # --watch (ratatui) og bakgrunnstråden
+│   ├── entur/         # Journey Planner v3-klient og geokoder
+│   └── render/        # avgangstavla: farger, merker, tidsformat
+├── macos/             # Info.plist, limes inn i binærfilen av build.rs
+├── scripts/           # install-macos.sh (app-bundle + symlenke)
+└── tests/fixtures/    # innspilte API-svar; testene går aldri på nett
+```
+
+---
+
+## Workflows
+
+| Workflow | Trigger | Hva den gjør |
+| -------- | ------- | ------------ |
+| CI | push, PR | `cargo fmt --check`, `clippy -D warnings`, `cargo test` på Linux og macOS |
+| Dependency Review | PR | blokkerer avhengigheter med kjente sårbarheter |
+| Scorecard | push, ukentlig | OpenSSF-vurdering av forsyningskjeden → Security-fanen |
+| Release Please | push til main | lager release-PR med CHANGELOG og versjonsbump |
+
+CI kjører på både `ubuntu-latest` og `macos-latest` med vilje: Core Location-koden i
+`src/location.rs` er `cfg`-gjemt bak macOS, så Linux-jobben beviser at `objc2`-avhengigheten
+faktisk er valgfri, og macOS-jobben er den eneste som i det hele tatt kompilerer den koden.
+
+---
+
 ## Utvikling
 
 ```sh
 cargo test
 cargo clippy --all-targets -- -D warnings
+cargo fmt --all --check
 ```
 
 Testene kjører mot innspilte API-svar i `tests/fixtures/`, så de trenger ikke nett.
+
+Commits følger [Conventional Commits](https://www.conventionalcommits.org/) — release-please
+regner ut versjonsnummer fra dem, og dette repoet har ingen automatisk sjekk av PR-titler,
+så det er verdt å være nøye. `feat:` gir minor bump, `fix:` patch, `feat!:` major.
+
+Se [CLAUDE.md](CLAUDE.md) og [AGENTS.md](AGENTS.md) for arbeidsflyt med kodeagenter.
+
+---
 
 ## Lisens
 
 MIT. Rutedata kommer fra Entur under [NLOD](https://data.norge.no/nlod/no/2.0).
 Dette er et hobbyprosjekt uten tilknytning til Ruter AS eller Entur AS.
+
+---
+
+<div align="center">
+
+### ⭐ Star this repo if you find it useful ⭐
+
+<a href="https://www.star-history.com/#mortennordbye/ruter-cli&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=mortennordbye/ruter-cli&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=mortennordbye/ruter-cli&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=mortennordbye/ruter-cli&type=Date" width="600" />
+  </picture>
+</a>
+
+Made by [Morten Victor Nordbye](https://github.com/mortennordbye)
+
+</div>
