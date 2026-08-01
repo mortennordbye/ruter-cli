@@ -103,21 +103,25 @@ fn latest_release() -> Result<String> {
 fn install(tag: &str) -> Result<()> {
     let script = fetch_installer()?;
 
-    let status = Command::new("sh")
+    let mut child = Command::new("sh")
         .arg("-s")
         .env("RUTER_VERSION", tag)
         .stdin(std::process::Stdio::piped())
         .spawn()
-        .and_then(|mut child| {
-            use std::io::Write;
-            child
-                .stdin
-                .take()
-                .expect("stdin was piped")
-                .write_all(script.as_bytes())
-                .and_then(|()| child.wait())
-        })
         .context("klarte ikke kjøre installasjonsskriptet")?;
+
+    // The handle has to be dropped before waiting. `sh -s` reads its script from stdin
+    // and keeps reading until EOF, so holding the pipe open across `wait()` deadlocks:
+    // the install runs to completion and the process then hangs forever.
+    {
+        use std::io::Write;
+        let mut stdin = child.stdin.take().expect("stdin was piped");
+        stdin
+            .write_all(script.as_bytes())
+            .context("klarte ikke sende installasjonsskriptet til sh")?;
+    }
+
+    let status = child.wait().context("klarte ikke kjøre installasjonsskriptet")?;
 
     if !status.success() {
         bail!("installasjonsskriptet feilet. Prøv manuelt:\n  curl -fsSL {INSTALL_URL} | sh");
