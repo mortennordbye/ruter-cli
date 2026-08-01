@@ -9,9 +9,10 @@ mod watch;
 use anyhow::{Context, Result, bail};
 use chrono::Local;
 use clap::Parser;
-use cli::{Cli, Command, Common, ConfigAction};
-use config::{Config, Place};
+use cli::{Cli, Command, Common, ConfigAction, RouteAction};
+use config::{Config, Place, Route, Waypoint};
 use entur::Client;
+use entur::trip::TripQuery;
 use location::{Options, Origin, resolve_named, resolve_origin};
 use render::{Style, board};
 use std::io::Write;
@@ -53,6 +54,7 @@ fn run(cli: Cli) -> Result<()> {
 
     match cli.command {
         Some(Command::Config { action }) => cmd_config(action, config, &client),
+        Some(Command::Route { action }) => cmd_route(action, config, &client, &cli.common),
         Some(Command::Near { radius, stops }) => {
             cmd_near(&client, &config, &cli.common, style, radius, stops)
         }
@@ -78,27 +80,48 @@ fn cmd_trip(
          Bruk `ruter <sted>`, eller sett `default_destination` i konfigurasjonen.",
     )?;
 
-    let opts = Options { no_gps: common.no_gps, no_ip: common.no_ip };
-    let origin = resolve_origin(client, config, common.from.as_deref(), opts)?;
-    let target = resolve_named(client, config, &destination, location::Source::Explicit)?;
+    // A saved route wins over a place of the same name: `route add` refuses to create
+    // that collision, so one can only exist in a hand-edited config.
+    let route = config.route(&destination).cloned();
 
-    let count = common.count.unwrap_or(config.num_results);
-    let modes = common.modes.clone().unwrap_or_else(|| config.modes.clone());
+    let opts = Options { no_gps: common.no_gps, no_ip: common.no_ip };
+    let saved_start = route.as_ref().and_then(|r| r.from.as_ref());
+    let origin = match (common.from.as_deref(), saved_start) {
+        // An explicit --from overrides a route's saved start, so that
+        // `ruter sorkedalen --from jobb` runs the same route from elsewhere.
+        (Some(explicit), _) => resolve_named(client, config, explicit, location::Source::Explicit)?,
+        (None, Some(start)) => place_origin(start, location::Source::SavedPlace),
+        (None, None) => resolve_origin(client, config, None, opts)?,
+    };
+
+    let (target, via) = match &route {
+        Some(route) => (
+            place_origin(&route.to, location::Source::SavedPlace),
+            route.via.iter().map(|w| w.id.clone()).collect(),
+        ),
+        None => {
+            (resolve_named(client, config, &destination, location::Source::Explicit)?, Vec::new())
+        }
+    };
+
+    let query = TripQuery {
+        via,
+        num_patterns: common.count.unwrap_or(config.num_results),
+        max_walk_minutes: config.max_walk_minutes,
+        modes: common.modes.clone().unwrap_or_else(|| config.modes.clone()),
+    };
 
     if common.watch {
         return watch::run_trip(
             &config.client_name,
             &origin,
             &target,
-            count,
-            config.max_walk_minutes,
-            &modes,
+            &query,
             config.watch_interval_secs,
         );
     }
 
-    let patterns =
-        client.trip(origin.coord, target.coord, count, config.max_walk_minutes, &modes)?;
+    let patterns = client.trip(origin.coord, target.coord, &query)?;
 
     if common.json {
         return emit(&format!("{}\n", serde_json::to_string_pretty(&patterns)?));
@@ -106,6 +129,151 @@ fn cmd_trip(
 
     let now = Local::now().fixed_offset();
     emit(&board::trip_board(&patterns, &origin, &target.name, now, style))
+}
+
+/// Let the user pick among geocoder matches, or take the first one outright.
+///
+/// A single match needs no question, and `--yes` skips the prompt entirely so the
+/// command stays usable from a script.
+fn choose(
+    matches: Vec<entur::geocode::GeoMatch>,
+    query: &str,
+    yes: bool,
+) -> Result<entur::geocode::GeoMatch> {
+    if yes || matches.len() == 1 {
+        return Ok(matches.into_iter().next().expect("geocode errors when empty"));
+    }
+
+    println!("Treff for \"{query}\":");
+    for (i, m) in matches.iter().enumerate() {
+        let layer = m.layer.as_deref().unwrap_or("");
+        println!("  {}. {}  {}", i + 1, m.label, layer);
+    }
+    print!("Velg [1-{}] (Enter = 1): ", matches.len());
+    std::io::stdout().flush()?;
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    let input = input.trim();
+    let index = if input.is_empty() {
+        0
+    } else {
+        input
+            .parse::<usize>()
+            .ok()
+            .filter(|n| (1..=matches.len()).contains(n))
+            .context("ugyldig valg")?
+            - 1
+    };
+    Ok(matches.into_iter().nth(index).expect("index was range-checked"))
+}
+
+/// Turn a saved place into an `Origin` without going back to the network.
+fn place_origin(place: &Place, source: location::Source) -> Origin {
+    Origin {
+        coord: entur::Coord { lat: place.lat, lon: place.lon },
+        name: place.label.clone(),
+        source,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ruter route ...
+// ---------------------------------------------------------------------------
+
+fn cmd_route(
+    action: RouteAction,
+    mut config: Config,
+    client: &Client,
+    common: &Common,
+) -> Result<()> {
+    match action {
+        RouteAction::List => {
+            if config.routes.is_empty() {
+                println!(
+                    "Ingen lagrede reiseveier enn\u{e5}. Legg til \u{e9}n med:\n  \
+                     ruter route add sorkedalen --to Stubberud --via Smestad --via R\u{f8}a"
+                );
+            }
+            for (name, route) in &config.routes {
+                println!("{name:<12} {}", route.label);
+                let start = match &route.from {
+                    Some(place) => place.label.as_str(),
+                    None => "der du er n\u{e5}",
+                };
+                let mut chain = vec![start.to_string()];
+                chain.extend(route.via.iter().map(|w| w.label.clone()));
+                chain.push(route.to.label.clone());
+                println!("{:<12} {}", "", chain.join(" \u{2192} "));
+            }
+        }
+
+        RouteAction::Remove { name } => {
+            if config.routes.remove(&name).is_none() {
+                bail!("fant ingen lagret reisevei som heter \"{name}\"");
+            }
+            let path = config.save()?;
+            println!("Fjernet \"{name}\" fra {}", path.display());
+        }
+
+        RouteAction::Add { name, to, via, yes } => {
+            // `ruter <navn>` looks routes up before places, so a shared name would make
+            // the place unreachable. Refuse rather than silently shadow it.
+            if config.place(&name).is_some() {
+                bail!(
+                    "\"{name}\" er allerede et lagret sted. Velg et annet navn for reiseveien, \
+                     ellers blir stedet utilgjengelig."
+                );
+            }
+
+            let start = match common.from.as_deref() {
+                Some(raw) => Some(resolve_place(client, &config, raw, yes)?),
+                None => None,
+            };
+            let destination = resolve_place(client, &config, &to, yes)?;
+
+            let mut waypoints = Vec::new();
+            for stop in &via {
+                let chosen = choose(client.geocode_stops(stop, 8)?, stop, yes)?;
+                let id =
+                    chosen.id.clone().expect("geocode_stops only returns matches that carry an id");
+                waypoints.push(Waypoint { label: chosen.label, id });
+            }
+
+            let label = format!(
+                "{} \u{2192} {}",
+                start.as_ref().map(|p| p.label.as_str()).unwrap_or("der du er n\u{e5}"),
+                destination.label
+            );
+            let route =
+                Route { label: label.clone(), from: start, to: destination, via: waypoints };
+
+            let chain =
+                route.via.iter().map(|w| w.label.as_str()).collect::<Vec<_>>().join(" \u{2192} ");
+            config.routes.insert(name.clone(), route);
+            let path = config.save()?;
+
+            println!("Lagret reiseveien \"{name}\": {label}");
+            if !chain.is_empty() {
+                println!("Via: {chain}");
+            }
+            println!("{}\nKj\u{f8}r den med: ruter {name}", path.display());
+        }
+    }
+    Ok(())
+}
+
+/// Resolve a route endpoint to a saved `Place`, reusing an existing saved place
+/// when the name matches one so that `--to hjem` does not geocode "hjem".
+fn resolve_place(client: &Client, config: &Config, raw: &str, yes: bool) -> Result<Place> {
+    if let Some(place) = config.place(raw) {
+        return Ok(place.clone());
+    }
+    if let Some(coord) = location::parse_coord(raw) {
+        return Ok(Place { label: raw.to_string(), lat: coord.lat, lon: coord.lon });
+    }
+    let chosen = choose(client.geocode(raw, 8)?, raw, yes)?;
+    Ok(Place { label: chosen.label, lat: chosen.coord.lat, lon: chosen.coord.lon })
 }
 
 // ---------------------------------------------------------------------------
@@ -240,34 +408,16 @@ fn cmd_config(action: ConfigAction, mut config: Config, client: &Client) -> Resu
             if query.trim().is_empty() {
                 bail!("oppgi en adresse, f.eks. `ruter config add hjem \"Storgata 1, Oslo\"`");
             }
+            // The mirror of the check in `route add`: routes win the name lookup, so a
+            // place sharing a route's name could never be reached.
+            if config.route(&name).is_some() {
+                bail!(
+                    "\"{name}\" er allerede en lagret reisevei. Velg et annet navn for stedet, \
+                     ellers blir det utilgjengelig."
+                );
+            }
 
-            let matches = client.geocode(&query, 8)?;
-            let chosen = if yes || matches.len() == 1 {
-                &matches[0]
-            } else {
-                println!("Treff for \"{query}\":");
-                for (i, m) in matches.iter().enumerate() {
-                    let layer = m.layer.as_deref().unwrap_or("");
-                    println!("  {}. {}  {}", i + 1, m.label, layer);
-                }
-                print!("Velg [1-{}] (Enter = 1): ", matches.len());
-                std::io::stdout().flush()?;
-
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input)?;
-                let input = input.trim();
-                let index = if input.is_empty() {
-                    0
-                } else {
-                    input
-                        .parse::<usize>()
-                        .ok()
-                        .filter(|n| (1..=matches.len()).contains(n))
-                        .context("ugyldig valg")?
-                        - 1
-                };
-                &matches[index]
-            };
+            let chosen = &choose(client.geocode(&query, 8)?, &query, yes)?;
 
             config.places.insert(
                 name.clone(),

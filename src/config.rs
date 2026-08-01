@@ -19,6 +19,32 @@ pub struct Place {
     pub lon: f64,
 }
 
+/// A stop a route is required to pass through, in order.
+///
+/// Stored as the NSR id rather than the text the user typed: "Stubberud" matches
+/// eight stops nationally and the Oslo one is not the first hit, so re-resolving
+/// the name on every run would eventually route the user somewhere else entirely.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Waypoint {
+    /// Human-readable name shown in output, e.g. "Smestad, Oslo".
+    pub label: String,
+    /// e.g. "NSR:StopPlace:58273".
+    pub id: String,
+}
+
+/// A named journey with fixed endpoints and waypoints.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Route {
+    /// Shown by `ruter route list`, e.g. "Brekkelia → Stubberud".
+    pub label: String,
+    /// `None` means "start from wherever I am now".
+    #[serde(default)]
+    pub from: Option<Place>,
+    pub to: Place,
+    #[serde(default)]
+    pub via: Vec<Waypoint>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -54,6 +80,9 @@ pub struct Config {
 
     #[serde(default)]
     pub places: BTreeMap<String, Place>,
+
+    #[serde(default)]
+    pub routes: BTreeMap<String, Route>,
 }
 
 fn default_client_name() -> String {
@@ -83,6 +112,7 @@ impl Default for Config {
             modes: default_modes(),
             watch_interval_secs: default_watch_interval(),
             places: BTreeMap::new(),
+            routes: BTreeMap::new(),
         }
     }
 }
@@ -116,6 +146,12 @@ impl Config {
     pub fn place(&self, name: &str) -> Option<&Place> {
         self.places.get(name).or_else(|| {
             self.places.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v)
+        })
+    }
+
+    pub fn route(&self, name: &str) -> Option<&Route> {
+        self.routes.get(name).or_else(|| {
+            self.routes.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v)
         })
     }
 }
@@ -159,6 +195,53 @@ mod tests {
         assert!(cfg.place("HOME").is_some());
         assert!(cfg.place("Home").is_some());
         assert!(cfg.place("work").is_none());
+    }
+
+    #[test]
+    fn routes_round_trip_through_toml() {
+        let mut cfg = Config::default();
+        cfg.routes.insert(
+            "sorkedalen".into(),
+            Route {
+                label: "Brekkelia \u{2192} Stubberud".into(),
+                from: Some(Place {
+                    label: "Brekkelia 3D, Oslo".into(),
+                    lat: 59.960913,
+                    lon: 10.766685,
+                }),
+                to: Place { label: "Stubberud, Oslo".into(), lat: 60.013148, lon: 10.616123 },
+                via: vec![
+                    Waypoint { label: "Smestad, Oslo".into(), id: "NSR:StopPlace:58273".into() },
+                    Waypoint { label: "R\u{f8}a, Oslo".into(), id: "NSR:StopPlace:59520".into() },
+                ],
+            },
+        );
+
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        let route = back.route("sorkedalen").unwrap();
+        // Waypoint order is the whole point of the feature.
+        assert_eq!(
+            route.via.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(),
+            ["NSR:StopPlace:58273", "NSR:StopPlace:59520"]
+        );
+        assert_eq!(route.from.as_ref().unwrap().label, "Brekkelia 3D, Oslo");
+        assert_eq!(route.to.label, "Stubberud, Oslo");
+    }
+
+    #[test]
+    fn a_route_without_a_start_parses() {
+        // No `from` means "start wherever I am", which must survive a reload.
+        let cfg: Config = toml::from_str(
+            r#"
+            [routes.jobb]
+            label = "Til jobb"
+            to = { label = "Jobben", lat = 59.91, lon = 10.75 }
+            "#,
+        )
+        .unwrap();
+        let route = cfg.route("JOBB").unwrap();
+        assert!(route.from.is_none());
+        assert!(route.via.is_empty());
     }
 
     #[test]

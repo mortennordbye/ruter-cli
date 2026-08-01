@@ -12,6 +12,9 @@ pub struct GeoMatch {
     pub coord: Coord,
     /// e.g. "address", "venue", "stop place" — helps the user pick.
     pub layer: Option<String>,
+    /// Stable NSR id, e.g. "NSR:StopPlace:58273". Only stops have one; addresses
+    /// come back with a numeric id that the journey planner cannot route through.
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +40,7 @@ struct Properties {
     label: Option<String>,
     name: Option<String>,
     layer: Option<String>,
+    id: Option<String>,
 }
 
 impl FeatureCollection {
@@ -49,6 +53,7 @@ impl FeatureCollection {
                     label,
                     coord: Coord { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] },
                     layer: f.properties.layer,
+                    id: f.properties.id,
                 })
             })
             .collect()
@@ -64,6 +69,24 @@ impl Client {
         let matches = fc.into_matches();
         if matches.is_empty() {
             bail!("fant ingen treff for \"{query}\"");
+        }
+        Ok(matches)
+    }
+
+    /// Like `geocode`, but restricted to stops.
+    ///
+    /// Used for route waypoints, which the journey planner routes through by NSR id.
+    /// An address has no such id, so letting one be picked here would save a waypoint
+    /// that can never be used.
+    pub fn geocode_stops(&self, query: &str, size: usize) -> Result<Vec<GeoMatch>> {
+        let url = format!(
+            "{GEOCODER_BASE}/autocomplete?text={}&size={size}&lang=no&layers=venue",
+            urlencode(query)
+        );
+        let fc: FeatureCollection = self.get_json(&url)?;
+        let matches: Vec<_> = fc.into_matches().into_iter().filter(|m| m.id.is_some()).collect();
+        if matches.is_empty() {
+            bail!("fant ingen holdeplass som heter \"{query}\"");
         }
         Ok(matches)
     }
