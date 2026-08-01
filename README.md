@@ -106,6 +106,37 @@ Nyttige flagg: `-n` antall resultater, `--modes bus,tram` for å begrense transp
 
 `ruter config list`, `ruter config remove <navn>` og `ruter config path` finnes også.
 
+## Faste reiseveier
+
+Reiseplanleggeren velger normalt den raskeste veien. Vil du alltid reise via bestemte
+holdeplasser, lagrer du en reisevei:
+
+```sh
+ruter route add sorkedalen \
+  --from "Brekkelia 3d, Oslo" \
+  --to "Stubberud, Oslo" \
+  --via Smestad --via Røa
+```
+
+Kjør den etterpå med navnet:
+
+```sh
+ruter sorkedalen
+ruter sorkedalen --watch
+ruter sorkedalen --from jobb    # samme reisevei, annet startpunkt
+```
+
+`--via` gjentas én gang per holdeplass, i den rekkefølgen du passerer dem. Dropper du
+`--from`, starter reiseveien der du er akkurat nå.
+
+Holdeplassene lagres med Entur-ID, ikke med teksten du skrev. «Stubberud» treffer åtte
+holdeplasser i Norge, og den i Oslo er ikke det første treffet — hadde navnet blitt slått
+opp på nytt hver gang, ville reiseveien før eller siden endt et helt annet sted.
+
+`ruter route list` og `ruter route remove <navn>` finnes også. Et navn kan ikke være både
+et lagret sted og en reisevei; `ruter <navn>` slår opp reiseveier først, så begge deler
+ville gjort stedet uleselig.
+
 ## Hvor den tror du er
 
 Kildene prøves i denne rekkefølgen, og den første som svarer vinner:
@@ -160,6 +191,15 @@ watch_interval_secs = 30
 label = "Ullevålsveien 15, Oslo"
 lat = 59.920331
 lon = 10.742684
+
+[routes.sorkedalen]
+label = "Brekkelia 3D, Oslo → Stubberud, Oslo"
+from = { label = "Brekkelia 3D, Oslo", lat = 59.960913, lon = 10.766685 }
+to = { label = "Stubberud, Oslo", lat = 60.013148, lon = 10.616123 }
+via = [
+  { label = "Smestad, Oslo", id = "NSR:StopPlace:58273" },
+  { label = "Røa, Oslo", id = "NSR:StopPlace:59520" },
+]
 ```
 
 Sett gjerne din egen `client_name`. Entur krever at klienter identifiserer seg, og anonyme
