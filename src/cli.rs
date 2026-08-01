@@ -14,7 +14,10 @@ use clap::{Args, Parser, Subcommand};
         ruter hjem --watch         samme, men oppdaterer seg selv\n  \
         ruter near                 avganger fra holdeplasser i n\u{e6}rheten\n  \
         ruter --from jobb hjem     reise mellom to lagrede steder\n  \
-        ruter where                sjekk posisjonen og hvor den kommer fra"
+        ruter where                sjekk posisjonen og hvor den kommer fra\n\n\
+        Faste reiseveier:\n  \
+        ruter route add sorkedalen --to Stubberud --via Smestad --via R\u{f8}a\n  \
+        ruter sorkedalen           kj\u{f8}r den lagrede reiseveien"
 )]
 pub struct Cli {
     /// Destination: a saved place, "lat,lon", or an address to look up.
@@ -92,6 +95,12 @@ pub enum Command {
         action: ConfigAction,
     },
 
+    /// Manage saved routes that go via specific stops.
+    Route {
+        #[command(subcommand)]
+        action: RouteAction,
+    },
+
     /// Show where ruter thinks you are, and why. Useful when GPS misbehaves.
     Where,
 
@@ -101,6 +110,31 @@ pub enum Command {
         #[arg(long)]
         check: bool,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RouteAction {
+    /// Save a route. Run it afterwards with `ruter <navn>`.
+    ///
+    /// The start comes from the global `--from`; omit it to have the route
+    /// begin wherever you happen to be.
+    Add {
+        /// Short name to refer to it by, e.g. "sorkedalen".
+        name: String,
+        /// Where the route ends.
+        #[arg(long, value_name = "STED")]
+        to: String,
+        /// A stop to travel via. Repeat it, in the order you pass through them.
+        #[arg(long, value_name = "HOLDEPLASS")]
+        via: Vec<String>,
+        /// Take the first match without asking.
+        #[arg(short, long)]
+        yes: bool,
+    },
+    /// List saved routes.
+    List,
+    /// Remove a saved route.
+    Remove { name: String },
 }
 
 #[derive(Debug, Subcommand)]

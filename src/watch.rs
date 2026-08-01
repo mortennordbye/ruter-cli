@@ -7,7 +7,7 @@
 
 use crate::entur::Client;
 use crate::entur::nearest::{NearbyStop, StopPlace};
-use crate::entur::trip::TripPattern;
+use crate::entur::trip::{TripPattern, TripQuery};
 use crate::location::Origin;
 use crate::render::{
     LEG_PREFIX, RULE_WIDTH, Rgb, STOP_COLUMN, delay_marker, duration_human, hhmm, mode_label, pad,
@@ -71,13 +71,11 @@ pub fn run_trip(
     client_name: &str,
     origin: &Origin,
     target: &Origin,
-    count: usize,
-    max_walk_minutes: u32,
-    modes: &[String],
+    query: &TripQuery,
     interval_secs: u64,
 ) -> Result<()> {
     let (from, to) = (origin.coord, target.coord);
-    let modes = modes.to_vec();
+    let query = query.clone();
     let client_name = client_name.to_string();
     let title = format!("{}  \u{2192}  {}", origin.name, target.name);
     let source = origin.source;
@@ -89,7 +87,7 @@ pub fn run_trip(
         interval_secs,
         move || {
             let client = Client::new(&client_name);
-            client.trip(from, to, count, max_walk_minutes, &modes)
+            client.trip(from, to, &query)
         },
         move |d: &Vec<TripPattern>, now| trip_lines(d, now, &origin_name, &dest_name),
     )

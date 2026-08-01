@@ -123,33 +123,48 @@ pub struct TranslatedString {
     pub value: String,
 }
 
+/// The tunable parts of a trip search.
+///
+/// Kept together because both the one-shot path and the watch poller need the
+/// identical set, and threading them positionally through two layers is how they
+/// end up out of step.
+#[derive(Debug, Clone)]
+pub struct TripQuery {
+    /// NSR stop ids the journey must pass through, in order. Empty means direct.
+    pub via: Vec<String>,
+    pub num_patterns: usize,
+    pub max_walk_minutes: u32,
+    pub modes: Vec<String>,
+}
+
 impl Client {
-    pub fn trip(
-        &self,
-        from: Coord,
-        to: Coord,
-        num_patterns: usize,
-        max_walk_minutes: u32,
-        modes: &[String],
-    ) -> Result<Vec<TripPattern>> {
-        let query = build_trip_query(from, to, num_patterns, max_walk_minutes, modes);
-        let response: TripResponse = self.graphql(&query)?;
+    pub fn trip(&self, from: Coord, to: Coord, query: &TripQuery) -> Result<Vec<TripPattern>> {
+        let body = build_trip_query(from, to, query);
+        let response: TripResponse = self.graphql(&body)?;
         Ok(response.trip.trip_patterns)
     }
 }
 
-fn build_trip_query(
-    from: Coord,
-    to: Coord,
-    num_patterns: usize,
-    max_walk_minutes: u32,
-    modes: &[String],
-) -> String {
+/// Render the ordered waypoints as a `via` argument, or nothing at all when there
+/// are none — Journey Planner rejects an empty `via` list.
+fn via_arg(via: &[String]) -> String {
+    if via.is_empty() {
+        return String::new();
+    }
+    let inner = via
+        .iter()
+        .map(|id| format!(r#"{{visit: {{stopLocationIds: ["{id}"]}}}}"#))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("\n    via: [{inner}]")
+}
+
+fn build_trip_query(from: Coord, to: Coord, query: &TripQuery) -> String {
     format!(
         r#"{{
   trip(
     from: {{coordinates: {{latitude: {from_lat}, longitude: {from_lon}}}}}
-    to: {{coordinates: {{latitude: {to_lat}, longitude: {to_lon}}}}}
+    to: {{coordinates: {{latitude: {to_lat}, longitude: {to_lon}}}}}{via}
     numTripPatterns: {num_patterns}
     maxAccessEgressDurationForMode: [{{streetMode: foot, duration: "PT{max_walk_minutes}M"}}]
     modes: {{accessMode: foot, egressMode: foot, transportModes: {modes}}}
@@ -179,7 +194,10 @@ fn build_trip_query(
         from_lon = from.lon,
         to_lat = to.lat,
         to_lon = to.lon,
-        modes = transport_modes_arg(modes),
+        via = via_arg(&query.via),
+        num_patterns = query.num_patterns,
+        max_walk_minutes = query.max_walk_minutes,
+        modes = transport_modes_arg(&query.modes),
     )
 }
 
@@ -260,19 +278,51 @@ mod tests {
         assert!(resp.trip.trip_patterns[0].has_realtime());
     }
 
+    fn query(via: &[&str]) -> TripQuery {
+        TripQuery {
+            via: via.iter().map(|s| s.to_string()).collect(),
+            num_patterns: 3,
+            max_walk_minutes: 12,
+            modes: vec!["bus".to_string()],
+        }
+    }
+
     #[test]
     fn query_embeds_coordinates_and_modes() {
         let q = build_trip_query(
             Coord { lat: 59.9139, lon: 10.7522 },
             Coord { lat: 59.9430, lon: 10.7180 },
-            3,
-            12,
-            &["bus".to_string()],
+            &query(&[]),
         );
         assert!(q.contains("latitude: 59.9139"));
         assert!(q.contains("longitude: 10.718"));
         assert!(q.contains("numTripPatterns: 3"));
         assert!(q.contains(r#"duration: "PT12M""#));
         assert!(q.contains("[{transportMode:bus}]"));
+    }
+
+    #[test]
+    fn no_waypoints_means_no_via_argument() {
+        // An empty `via: []` is rejected by Journey Planner, so it must be absent.
+        assert_eq!(via_arg(&[]), "");
+        let q = build_trip_query(
+            Coord { lat: 59.9, lon: 10.7 },
+            Coord { lat: 59.9, lon: 10.7 },
+            &query(&[]),
+        );
+        assert!(!q.contains("via"));
+    }
+
+    #[test]
+    fn waypoints_are_listed_in_order() {
+        let q = build_trip_query(
+            Coord { lat: 59.9, lon: 10.7 },
+            Coord { lat: 60.0, lon: 10.6 },
+            &query(&["NSR:StopPlace:58273", "NSR:StopPlace:59520"]),
+        );
+        assert!(q.contains(r#"{visit: {stopLocationIds: ["NSR:StopPlace:58273"]}}"#));
+        assert!(q.contains(r#"{visit: {stopLocationIds: ["NSR:StopPlace:59520"]}}"#));
+        // Order is the routing constraint, so Smestad must precede Røa.
+        assert!(q.find("58273").unwrap() < q.find("59520").unwrap());
     }
 }
