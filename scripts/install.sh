@@ -99,4 +99,4 @@ echo "ruter $version er installert."
 # `ruter upgrade` kjører dette skriptet, så onboarding-hintet ville ellers dukket opp
 # ved hver eneste oppgradering — og se ut som om konfigurasjonen var borte.
 config="${XDG_CONFIG_HOME:-$HOME/.config}/ruter/config.toml"
-[ -f "$config" ] || echo "Kom i gang:  ruter config add hjem \"Storgata 1, Oslo\""
+[ -f "$config" ] || echo "Kom i gang:  ruter config add hjem \"Dronningens gate 40, Oslo\""

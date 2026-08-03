@@ -21,21 +21,21 @@ pub struct Place {
 
 /// A stop a route is required to pass through, in order.
 ///
-/// Stored as the NSR id rather than the text the user typed: "Stubberud" matches
-/// eight stops nationally and the Oslo one is not the first hit, so re-resolving
+/// Stored as the NSR id rather than the text the user typed: "Solvang" matches
+/// 25 stops nationally and the Oslo one is only the tenth hit, so re-resolving
 /// the name on every run would eventually route the user somewhere else entirely.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Waypoint {
-    /// Human-readable name shown in output, e.g. "Smestad, Oslo".
+    /// Human-readable name shown in output, e.g. "Ullevål stadion, Oslo".
     pub label: String,
-    /// e.g. "NSR:StopPlace:58273".
+    /// e.g. "NSR:StopPlace:58265".
     pub id: String,
 }
 
 /// A named journey with fixed endpoints and waypoints.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Route {
-    /// Shown by `ruter route list`, e.g. "Brekkelia → Stubberud".
+    /// Shown by `ruter route list`, e.g. "Dronningens gate 40 → Sognsvann".
     pub label: String,
     /// `None` means "start from wherever I am now".
     #[serde(default)]
@@ -201,31 +201,34 @@ mod tests {
     fn routes_round_trip_through_toml() {
         let mut cfg = Config::default();
         cfg.routes.insert(
-            "sorkedalen".into(),
+            "sognsvann".into(),
             Route {
-                label: "Brekkelia \u{2192} Stubberud".into(),
+                label: "Dronningens gate 40 \u{2192} Sognsvann".into(),
                 from: Some(Place {
-                    label: "Brekkelia 3D, Oslo".into(),
-                    lat: 59.960913,
-                    lon: 10.766685,
+                    label: "Dronningens gate 40, Oslo".into(),
+                    lat: 59.912517,
+                    lon: 10.74882,
                 }),
-                to: Place { label: "Stubberud, Oslo".into(), lat: 60.013148, lon: 10.616123 },
+                to: Place { label: "Sognsvann, Oslo".into(), lat: 59.96732, lon: 10.73375 },
                 via: vec![
-                    Waypoint { label: "Smestad, Oslo".into(), id: "NSR:StopPlace:58273".into() },
-                    Waypoint { label: "R\u{f8}a, Oslo".into(), id: "NSR:StopPlace:59520".into() },
+                    Waypoint {
+                        label: "Ullev\u{e5}l stadion, Oslo".into(),
+                        id: "NSR:StopPlace:58265".into(),
+                    },
+                    Waypoint { label: "Solvang, Oslo".into(), id: "NSR:StopPlace:6162".into() },
                 ],
             },
         );
 
         let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
-        let route = back.route("sorkedalen").unwrap();
+        let route = back.route("sognsvann").unwrap();
         // Waypoint order is the whole point of the feature.
         assert_eq!(
             route.via.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(),
-            ["NSR:StopPlace:58273", "NSR:StopPlace:59520"]
+            ["NSR:StopPlace:58265", "NSR:StopPlace:6162"]
         );
-        assert_eq!(route.from.as_ref().unwrap().label, "Brekkelia 3D, Oslo");
-        assert_eq!(route.to.label, "Stubberud, Oslo");
+        assert_eq!(route.from.as_ref().unwrap().label, "Dronningens gate 40, Oslo");
+        assert_eq!(route.to.label, "Sognsvann, Oslo");
     }
 
     #[test]

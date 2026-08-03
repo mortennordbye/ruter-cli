@@ -88,7 +88,7 @@ fn cmd_trip(
     let saved_start = route.as_ref().and_then(|r| r.from.as_ref());
     let origin = match (common.from.as_deref(), saved_start) {
         // An explicit --from overrides a route's saved start, so that
-        // `ruter sorkedalen --from jobb` runs the same route from elsewhere.
+        // `ruter sognsvann --from jobb` runs the same route from elsewhere.
         (Some(explicit), _) => resolve_named(client, config, explicit, location::Source::Explicit)?,
         (None, Some(start)) => place_origin(start, location::Source::SavedPlace),
         (None, None) => resolve_origin(client, config, None, opts)?,
@@ -192,7 +192,7 @@ fn cmd_route(
             if config.routes.is_empty() {
                 println!(
                     "Ingen lagrede reiseveier enn\u{e5}. Legg til \u{e9}n med:\n  \
-                     ruter route add sorkedalen --to Stubberud --via Smestad --via R\u{f8}a"
+                     ruter route add sognsvann --to Sognsvann --via \"Ullev\u{e5}l stadion, Oslo\""
                 );
             }
             for (name, route) in &config.routes {
@@ -387,7 +387,7 @@ fn cmd_config(action: ConfigAction, mut config: Config, client: &Client) -> Resu
             if config.places.is_empty() {
                 println!(
                     "Ingen lagrede steder enn\u{e5}. Legg til ett med:\n  \
-                     ruter config add hjem \"Storgata 1, Oslo\""
+                     ruter config add hjem \"Dronningens gate 40, Oslo\""
                 );
             }
             for (name, place) in &config.places {
@@ -406,7 +406,9 @@ fn cmd_config(action: ConfigAction, mut config: Config, client: &Client) -> Resu
         ConfigAction::Add { name, query, yes } => {
             let query = query.join(" ");
             if query.trim().is_empty() {
-                bail!("oppgi en adresse, f.eks. `ruter config add hjem \"Storgata 1, Oslo\"`");
+                bail!(
+                    "oppgi en adresse, f.eks. `ruter config add hjem \"Dronningens gate 40, Oslo\"`"
+                );
             }
             // The mirror of the check in `route add`: routes win the name lookup, so a
             // place sharing a route's name could never be reached.

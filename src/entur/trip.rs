@@ -318,11 +318,11 @@ mod tests {
         let q = build_trip_query(
             Coord { lat: 59.9, lon: 10.7 },
             Coord { lat: 60.0, lon: 10.6 },
-            &query(&["NSR:StopPlace:58273", "NSR:StopPlace:59520"]),
+            &query(&["NSR:StopPlace:58265", "NSR:StopPlace:6162"]),
         );
-        assert!(q.contains(r#"{visit: {stopLocationIds: ["NSR:StopPlace:58273"]}}"#));
-        assert!(q.contains(r#"{visit: {stopLocationIds: ["NSR:StopPlace:59520"]}}"#));
-        // Order is the routing constraint, so Smestad must precede Røa.
-        assert!(q.find("58273").unwrap() < q.find("59520").unwrap());
+        assert!(q.contains(r#"{visit: {stopLocationIds: ["NSR:StopPlace:58265"]}}"#));
+        assert!(q.contains(r#"{visit: {stopLocationIds: ["NSR:StopPlace:6162"]}}"#));
+        // Order is the routing constraint, so Ullevål stadion must precede Solvang.
+        assert!(q.find("58265").unwrap() < q.find("6162").unwrap());
     }
 }

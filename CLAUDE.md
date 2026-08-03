@@ -107,7 +107,7 @@ No env vars and no `.env` file. Runtime configuration lives in
 `ruter config add`. To exercise a throwaway config without touching your real one:
 
 ```bash
-XDG_CONFIG_HOME=$(mktemp -d) cargo run -- config add hjem "Storgata 1, Oslo" --yes
+XDG_CONFIG_HOME=$(mktemp -d) cargo run -- config add hjem "Dronningens gate 40, Oslo" --yes
 ```
 
 **On containers:** the blueprint's "develop inside containers" guidance does not apply

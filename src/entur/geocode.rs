@@ -61,7 +61,7 @@ impl FeatureCollection {
 }
 
 impl Client {
-    /// Resolve a free-text query such as "Ullevålsveien 15, Oslo".
+    /// Resolve a free-text query such as "Dronningens gate 40, Oslo".
     pub fn geocode(&self, query: &str, size: usize) -> Result<Vec<GeoMatch>> {
         let url =
             format!("{GEOCODER_BASE}/autocomplete?text={}&size={size}&lang=no", urlencode(query));
@@ -133,20 +133,20 @@ mod tests {
 
     #[test]
     fn parses_geojson_lon_lat_order() {
-        // Recorded from the live geocoder for "Ullevålsveien 15, Oslo".
+        // Recorded from the live geocoder for "Dronningens gate 40, Oslo".
         let json = r#"{
             "features": [{
-                "geometry": {"type": "Point", "coordinates": [10.742684, 59.920331]},
-                "properties": {"label": "Ullevålsveien 15, Oslo", "layer": "address"}
+                "geometry": {"type": "Point", "coordinates": [10.74882, 59.912517]},
+                "properties": {"label": "Dronningens gate 40, Oslo", "layer": "address"}
             }]
         }"#;
         let fc: FeatureCollection = serde_json::from_str(json).unwrap();
         let matches = fc.into_matches();
         assert_eq!(matches.len(), 1);
         // The whole point: latitude is the SECOND element in GeoJSON.
-        assert!((matches[0].coord.lat - 59.920331).abs() < 1e-9);
-        assert!((matches[0].coord.lon - 10.742684).abs() < 1e-9);
-        assert_eq!(matches[0].label, "Ullevålsveien 15, Oslo");
+        assert!((matches[0].coord.lat - 59.912517).abs() < 1e-9);
+        assert!((matches[0].coord.lon - 10.74882).abs() < 1e-9);
+        assert_eq!(matches[0].label, "Dronningens gate 40, Oslo");
     }
 
     #[test]

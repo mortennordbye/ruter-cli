@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn rejects_things_that_are_not_coordinates() {
         assert!(parse_coord("home").is_none());
-        assert!(parse_coord("Storgata 1, Oslo").is_none());
+        assert!(parse_coord("Dronningens gate 40, Oslo").is_none());
         assert!(parse_coord("59.9139").is_none());
         assert!(parse_coord("").is_none());
     }

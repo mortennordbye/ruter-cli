@@ -18,17 +18,17 @@ Norge. Navnet kommer av at det er skrevet for daglig bruk i Oslo, der Ruter er o
 ---
 
 ```
-  Oslo City, Oslo  →  Ullevålsveien 15, Oslo                         15:53
+  Storo, Oslo  →  Dronningens gate 40, Oslo                          11:59
   ════════════════════════════════════════════════════════════════════════
-  ● om 2 min     15:55 → 16:12   18 min   direkte
-      ↳ gå 3 min                                       → Jernbanetorget
-      [ 3 ] T-bane Jernbanetorget spor 2   15:58 ●     → Stortinget
-      ↳ gå 13 min                                      → Ullevålsveien 15, Oslo
+  ● om 3 min     12:02 → 12:20   18 min   direkte
+      ↳ gå 1 min                                       → Storo
+      [18 ] trikk  Storo spor A            12:03 ●     → Jernbanetorget
+      ↳ gå 1 min                                       → Dronningens gate 40, Oslo
   ────────────────────────────────────────────────────────────────────────
-  ● om 5 min     15:58 → 16:16   18 min   direkte
-      ↳ gå 3 min                                       → Storgata
-      [54 ] buss   Storgata                16:01 ● +2  → Møllerveien
-      ↳ gå 11 min                                      → Ullevålsveien 15, Oslo
+  ● om 6 min     12:05 → 12:24   19 min   direkte
+      ↳ gå 3 min                                       → Storo
+      [ 5 ] T-bane Storo spor 1            12:08 ●     → Jernbanetorget
+      ↳ gå 4 min                                       → Dronningens gate 40, Oslo
   ────────────────────────────────────────────────────────────────────────
 ```
 
@@ -81,7 +81,7 @@ cargo install --path .              # Linux, eller hvis du ikke trenger GPS
 ### Så
 
 ```sh
-ruter config add hjem "Ullevålsveien 15, Oslo"
+ruter config add hjem "Dronningens gate 40, Oslo"
 ruter hjem
 ```
 
@@ -112,26 +112,27 @@ Reiseplanleggeren velger normalt den raskeste veien. Vil du alltid reise via bes
 holdeplasser, lagrer du en reisevei:
 
 ```sh
-ruter route add sorkedalen \
-  --from "Brekkelia 3d, Oslo" \
-  --to "Stubberud, Oslo" \
-  --via Smestad --via Røa
+ruter route add sognsvann \
+  --from "Dronningens gate 40, Oslo" \
+  --to "Sognsvann, Oslo" \
+  --via "Ullevål stadion, Oslo" --via "Solvang, Oslo"
 ```
 
 Kjør den etterpå med navnet:
 
 ```sh
-ruter sorkedalen
-ruter sorkedalen --watch
-ruter sorkedalen --from jobb    # samme reisevei, annet startpunkt
+ruter sognsvann
+ruter sognsvann --watch
+ruter sognsvann --from jobb    # samme reisevei, annet startpunkt
 ```
 
 `--via` gjentas én gang per holdeplass, i den rekkefølgen du passerer dem. Dropper du
 `--from`, starter reiseveien der du er akkurat nå.
 
-Holdeplassene lagres med Entur-ID, ikke med teksten du skrev. «Stubberud» treffer åtte
-holdeplasser i Norge, og den i Oslo er ikke det første treffet — hadde navnet blitt slått
-opp på nytt hver gang, ville reiseveien før eller siden endt et helt annet sted.
+Holdeplassene lagres med Entur-ID, ikke med teksten du skrev. «Solvang» treffer 25
+holdeplasser i Norge, og den i Oslo kommer først på tiende plass — hadde navnet blitt
+slått opp på nytt hver gang, ville reiseveien før eller siden endt et helt annet sted.
+Av samme grunn står det «Solvang, Oslo» og ikke bare «Solvang» i eksempelet over.
 
 `ruter route list` og `ruter route remove <navn>` finnes også. Et navn kan ikke være både
 et lagret sted og en reisevei; `ruter <navn>` slår opp reiseveier først, så begge deler
@@ -169,7 +170,7 @@ Etter installasjon dukker «ruter» opp under *Systeminnstillinger → Personver
 Stedstjenester*. Uten GPS venter `ruter` i fire sekunder før den faller tilbake til IP; `--no-gps`
 hopper over forsøket.
 
-**IP-oppslag er grovt.** På denne maskinen ga IP-oppslaget Stortorvet mens GPS ga Brekkelia — 5 km
+**IP-oppslag er grovt.** På én maskin ga IP-oppslaget Stortorvet mens GPS ga en adresse 5 km
 unna, altså helt andre holdeplasser. To ulike IP-tjenester ga dessuten svar som lå 55 km fra
 hverandre på samme tilkobling. Derfor merkes resultatet alltid med en advarsel når posisjonen
 kommer derfra.
@@ -188,17 +189,17 @@ modes = ["bus", "tram", "metro", "rail", "water"]
 watch_interval_secs = 30
 
 [places.hjem]
-label = "Ullevålsveien 15, Oslo"
-lat = 59.920331
-lon = 10.742684
+label = "Dronningens gate 40, Oslo"
+lat = 59.912517
+lon = 10.74882
 
-[routes.sorkedalen]
-label = "Brekkelia 3D, Oslo → Stubberud, Oslo"
-from = { label = "Brekkelia 3D, Oslo", lat = 59.960913, lon = 10.766685 }
-to = { label = "Stubberud, Oslo", lat = 60.013148, lon = 10.616123 }
+[routes.sognsvann]
+label = "Dronningens gate 40, Oslo → Sognsvann, Oslo"
+from = { label = "Dronningens gate 40, Oslo", lat = 59.912517, lon = 10.74882 }
+to = { label = "Sognsvann, Oslo", lat = 59.96732, lon = 10.73375 }
 via = [
-  { label = "Smestad, Oslo", id = "NSR:StopPlace:58273" },
-  { label = "Røa, Oslo", id = "NSR:StopPlace:59520" },
+  { label = "Ullevål stadion, Oslo", id = "NSR:StopPlace:58265" },
+  { label = "Solvang, Oslo", id = "NSR:StopPlace:6162" },
 ]
 ```
 

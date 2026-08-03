@@ -9,15 +9,15 @@ use clap::{Args, Parser, Subcommand};
     about = "Neste avgang med buss, trikk, T-bane og tog \u{2014} fra der du st\u{e5}r",
     long_about = None,
     after_help = "Eksempler:\n  \
-        ruter config add hjem \"Ullev\u{e5}lsveien 15, Oslo\"\n  \
+        ruter config add hjem \"Dronningens gate 40, Oslo\"\n  \
         ruter hjem                 reise fra der du er n\u{e5} til \"hjem\"\n  \
         ruter hjem --watch         samme, men oppdaterer seg selv\n  \
         ruter near                 avganger fra holdeplasser i n\u{e6}rheten\n  \
         ruter --from jobb hjem     reise mellom to lagrede steder\n  \
         ruter where                sjekk posisjonen og hvor den kommer fra\n\n\
         Faste reiseveier:\n  \
-        ruter route add sorkedalen --to Stubberud --via Smestad --via R\u{f8}a\n  \
-        ruter sorkedalen           kj\u{f8}r den lagrede reiseveien"
+        ruter route add sognsvann --to Sognsvann --via \"Ullev\u{e5}l stadion, Oslo\"\n  \
+        ruter sognsvann            kj\u{f8}r den lagrede reiseveien"
 )]
 pub struct Cli {
     /// Destination: a saved place, "lat,lon", or an address to look up.
@@ -119,7 +119,7 @@ pub enum RouteAction {
     /// The start comes from the global `--from`; omit it to have the route
     /// begin wherever you happen to be.
     Add {
-        /// Short name to refer to it by, e.g. "sorkedalen".
+        /// Short name to refer to it by, e.g. "sognsvann".
         name: String,
         /// Where the route ends.
         #[arg(long, value_name = "STED")]
