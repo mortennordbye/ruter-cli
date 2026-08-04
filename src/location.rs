@@ -195,13 +195,16 @@ static LAST_AUTH_STATUS: std::sync::atomic::AtomicI32 = std::sync::atomic::Atomi
 #[cfg(target_os = "macos")]
 static FIX: std::sync::Mutex<Option<Coord>> = std::sync::Mutex::new(None);
 
-/// A delegate is not optional, which is what the old polling loop got wrong.
-///
-/// `CLLocationManager` only ever *pushes* fixes, through
-/// `locationManager:didUpdateLocations:`. Its `location` property is not a live
-/// reading — it is whatever the system already had cached. Polling that property
-/// alone therefore succeeds exactly when something else on the machine has used
-/// location services recently, and times out into the IP fallback otherwise.
+// A delegate is not optional, which is what the old polling loop got wrong.
+//
+// `CLLocationManager` only ever *pushes* fixes, through
+// `locationManager:didUpdateLocations:`. Its `location` property is not a live
+// reading — it is whatever the system already had cached. Polling that property
+// alone therefore succeeds exactly when something else on the machine has used
+// location services recently, and times out into the IP fallback otherwise.
+//
+// Plain comments rather than doc comments: rustdoc does not document macro
+// invocations, and `///` here is a hard error under `-D warnings`.
 #[cfg(target_os = "macos")]
 define_class!(
     #[unsafe(super(NSObject))]
