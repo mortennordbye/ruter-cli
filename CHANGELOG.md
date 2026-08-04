@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/mortennordbye/ruter-cli/compare/v0.4.0...v0.5.0) (2026-08-04)
+
+
+### Features
+
+* **cli:** accept a destination of several words without quotes ([#15](https://github.com/mortennordbye/ruter-cli/issues/15)) ([11b97c1](https://github.com/mortennordbye/ruter-cli/commit/11b97c1d7fe8b8c398c0cf74c14d19e96fd8ee4c))
+* **install:** put ~/.local/bin on PATH, and lead the README with the install command ([#16](https://github.com/mortennordbye/ruter-cli/issues/16)) ([d2e33c0](https://github.com/mortennordbye/ruter-cli/commit/d2e33c00aae939ef9149885209d4232143c58c87))
+
+
+### Bug Fixes
+
+* **location:** settle authorization before asking for a position ([#14](https://github.com/mortennordbye/ruter-cli/issues/14)) ([ce62435](https://github.com/mortennordbye/ruter-cli/commit/ce62435ca7890d69bb18ccfae94aa710e2f09cc0))
+
 ## [0.4.0](https://github.com/mortennordbye/ruter-cli/compare/v0.3.0...v0.4.0) (2026-08-04)
 
 
