@@ -203,8 +203,7 @@ static FIX: std::sync::Mutex<Option<Coord>> = std::sync::Mutex::new(None);
 /// wait expiring, which looks the same whether the user is indoors, offline or
 /// unauthorised.
 #[cfg(target_os = "macos")]
-static FAIL_CODE: std::sync::atomic::AtomicI64 =
-    std::sync::atomic::AtomicI64::new(i64::MIN);
+static FAIL_CODE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(i64::MIN);
 
 /// Whether macOS put the permission dialog on screen during this attempt.
 #[cfg(target_os = "macos")]
@@ -225,11 +224,8 @@ fn record_attempt(what: impl Into<String>) {
 /// delegate callback to arrive at all.
 #[cfg(target_os = "macos")]
 fn pump_run_loop(seconds: f64) {
-    // SAFETY: pumping the calling thread's own run loop.
-    unsafe {
-        let until = NSDate::dateWithTimeIntervalSinceNow(seconds);
-        NSRunLoop::currentRunLoop().runUntilDate(&until);
-    }
+    let until = NSDate::dateWithTimeIntervalSinceNow(seconds);
+    NSRunLoop::currentRunLoop().runUntilDate(&until);
 }
 
 /// Translate the `CLError` codes a user can actually act on.
