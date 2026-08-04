@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod doctor;
 mod entur;
 mod location;
 mod render;
@@ -43,11 +44,14 @@ pub fn emit(text: &str) -> Result<()> {
 }
 
 fn run(cli: Cli) -> Result<()> {
-    // Handled before the config is touched. `deny_unknown_fields` means a config written
-    // by a newer version stops an older binary dead, and upgrading is exactly the way out
-    // of that; it must not need a readable config.
-    if let Some(Command::Upgrade { check }) = &cli.command {
-        return upgrade::run(*check);
+    // Both handled before the config is touched. `deny_unknown_fields` means a config
+    // written by a newer version stops an older binary dead; upgrading is the way out of
+    // that, and diagnosing it is exactly what `doctor` is for. Neither may need a
+    // readable config to run.
+    match &cli.command {
+        Some(Command::Upgrade { check }) => return upgrade::run(*check),
+        Some(Command::Doctor) => return doctor::run(),
+        _ => {}
     }
 
     // `--watch` returns into a full-screen loop that never reaches the `--json`
@@ -67,7 +71,9 @@ fn run(cli: Cli) -> Result<()> {
             cmd_near(&client, &config, &cli.common, style, radius, stops)
         }
         Some(Command::Where) => cmd_where(&client, &config, &cli.common, style),
-        Some(Command::Upgrade { .. }) => unreachable!("handled before the config is loaded"),
+        Some(Command::Upgrade { .. }) | Some(Command::Doctor) => {
+            unreachable!("handled before the config is loaded")
+        }
         // Joined back into one string: the destination is collected word by word so
         // that an address with spaces does not have to be quoted.
         None => {

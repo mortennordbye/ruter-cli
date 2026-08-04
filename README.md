@@ -122,6 +122,7 @@ ruter config add jobb Brekkelia 3D          # anførselstegn er valgfritt
 | `ruter Brekkelia 3D` | adresser med mellomrom trenger ikke anførselstegn |
 | `ruter hjem --json` | rå JSON, for skripting |
 | `ruter where` | hvor den tror du er, og hvilken kilde den brukte |
+| `ruter doctor` | diagnoserapport å lime inn i en feilrapport |
 | `ruter upgrade` | sjekk om det finnes en nyere versjon, og installer den |
 
 Nyttige flagg: `-n` antall resultater, `--modes bus,tram` for å begrense transportmidler,
@@ -203,6 +204,24 @@ sist.
 unna, altså helt andre holdeplasser. To ulike IP-tjenester ga dessuten svar som lå 55 km fra
 hverandre på samme tilkobling. Derfor merkes resultatet alltid med en advarsel når posisjonen
 kommer derfra.
+
+## Melde fra om feil
+
+```bash
+ruter doctor
+```
+
+Skriver ut versjon, plattform, om den kjører som app-bundle, hva Core Location svarte,
+hvilke innstillinger som er satt, og om Entur svarer — ferdig pakket i en kodeblokk du
+limer rett inn i en [issue](https://github.com/mortennordbye/ruter-cli/issues/new/choose).
+
+Rapporten inneholder **ingen koordinater, adresser eller stedsnavn**. Lagrede steder er
+hjemme- og jobbadressene dine, og en issue er offentlig, så rapporten sier bare *hvor
+mange* steder du har lagret og *om* standardverdiene er satt — aldri hvilke. Hjemmekatalogen
+er byttet ut med `~`.
+
+Den virker også når konfigurasjonen er ødelagt: den leses, men en lesefeil rapporteres som
+et funn i stedet for å stoppe kommandoen.
 
 ## Konfigurasjon
 

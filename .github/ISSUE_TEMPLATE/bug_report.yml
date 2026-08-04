@@ -1,0 +1,42 @@
+name: Feilrapport
+description: Noe virker ikke som det skal
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Takk for at du melder fra. Kjør `ruter doctor` og lim inn rapporten under —
+        den forteller det meste om hva som er galt.
+
+        Rapporten inneholder **ingen koordinater, adresser eller stedsnavn**. Den sier
+        bare *hvor mange* steder du har lagret, ikke hvilke.
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Utdata fra `ruter doctor`
+      description: Kjør `ruter doctor` og lim inn hele blokken.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Hva skjedde?
+      description: Hva gjorde du, hva forventet du, og hva skjedde i stedet?
+      placeholder: |
+        Kommando: ruter hjem --watch
+        Forventet: en tavle som oppdaterer seg
+        Skjedde:   ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Utdata fra kommandoen
+      description: Lim inn det ruter skrev, hvis det er noe å vise.
+      render: text
+    validations:
+      required: false
