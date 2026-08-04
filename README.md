@@ -34,16 +34,23 @@ terminalvinduer uten at du trenger å rydde i profilfilen selv.
 ```
   Storo, Oslo  →  Dronningens gate 40, Oslo                          11:59
   ════════════════════════════════════════════════════════════════════════
-  ● om 3 min     12:02 → 12:20   18 min   direkte
-      ↳ gå 1 min                                       → Storo
-      [18 ] trikk  Storo spor A            12:03 ●     → Jernbanetorget
-      ↳ gå 1 min                                       → Dronningens gate 40, Oslo
+  ● om 3 min     12:02 → 12:20   18 min · direkte
+      12:02     Storo, Oslo
+        ╎    gå 1 min
+      12:03     Storo spor A           ● [18 ] trikk  → Jernbanetorget
+        ╎    gå 1 min
+      12:20     Dronningens gate 40, Oslo
   ────────────────────────────────────────────────────────────────────────
-  ● om 6 min     12:05 → 12:24   19 min   direkte
-      ↳ gå 3 min                                       → Storo
-      [ 5 ] T-bane Storo spor 1            12:08 ●     → Jernbanetorget
-      ↳ gå 4 min                                       → Dronningens gate 40, Oslo
+  ● om 6 min     12:05 → 12:24   19 min · direkte
+      12:05     Storo, Oslo
+        ╎    gå 3 min
+      12:08 +2  Storo spor 1           ● [ 5 ] T-bane → Jernbanetorget
+        ╎    gå 4 min
+      12:24     Dronningens gate 40, Oslo
   ────────────────────────────────────────────────────────────────────────
+
+  ● sanntid   ○ rutetid   +2 min forsinket
+  posisjon: GPS · sanntid fra Entur
 ```
 
 ## Kom i gang
@@ -115,6 +122,7 @@ ruter config add jobb Brekkelia 3D          # anførselstegn er valgfritt
 | `ruter Brekkelia 3D` | adresser med mellomrom trenger ikke anførselstegn |
 | `ruter hjem --json` | rå JSON, for skripting |
 | `ruter where` | hvor den tror du er, og hvilken kilde den brukte |
+| `ruter doctor` | diagnoserapport å lime inn i en feilrapport |
 | `ruter upgrade` | sjekk om det finnes en nyere versjon, og installer den |
 
 Nyttige flagg: `-n` antall resultater, `--modes bus,tram` for å begrense transportmidler,
@@ -196,6 +204,24 @@ sist.
 unna, altså helt andre holdeplasser. To ulike IP-tjenester ga dessuten svar som lå 55 km fra
 hverandre på samme tilkobling. Derfor merkes resultatet alltid med en advarsel når posisjonen
 kommer derfra.
+
+## Melde fra om feil
+
+```bash
+ruter doctor
+```
+
+Skriver ut versjon, plattform, om den kjører som app-bundle, hva Core Location svarte,
+hvilke innstillinger som er satt, og om Entur svarer — ferdig pakket i en kodeblokk du
+limer rett inn i en [issue](https://github.com/mortennordbye/ruter-cli/issues/new/choose).
+
+Rapporten inneholder **ingen koordinater, adresser eller stedsnavn**. Lagrede steder er
+hjemme- og jobbadressene dine, og en issue er offentlig, så rapporten sier bare *hvor
+mange* steder du har lagret og *om* standardverdiene er satt — aldri hvilke. Hjemmekatalogen
+er byttet ut med `~`.
+
+Den virker også når konfigurasjonen er ødelagt: den leses, men en lesefeil rapporteres som
+et funn i stedet for å stoppe kommandoen.
 
 ## Konfigurasjon
 

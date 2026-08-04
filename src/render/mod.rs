@@ -2,6 +2,8 @@
 
 pub mod board;
 
+use crate::entur::nearest::EstimatedCall;
+use crate::entur::trip::{Leg, Presentation, TripPattern};
 use chrono::{DateTime, FixedOffset};
 use std::io::IsTerminal;
 
@@ -56,6 +58,48 @@ impl Rgb {
             return d;
         }
         if self.contrast_with(BLACK) >= self.contrast_with(WHITE) { BLACK } else { WHITE }
+    }
+}
+
+/// The text and colours of a line badge, resolved from the wire data.
+///
+/// The one-shot board and the `--watch` view each render two kinds of row, and all
+/// four resolved this identically. The fallbacks are the part worth having in one
+/// place: `publicCode` is genuinely null for some rail services, and a colour that
+/// fails to parse has to leave the badge uncoloured rather than drop the row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Badge {
+    pub text: String,
+    pub bg: Option<Rgb>,
+    pub fg: Option<Rgb>,
+}
+
+impl Badge {
+    fn new(text: String, presentation: Option<&Presentation>) -> Self {
+        Badge {
+            text,
+            bg: presentation.and_then(|p| p.colour.as_deref()).and_then(Rgb::from_hex),
+            fg: presentation.and_then(|p| p.text_colour.as_deref()).and_then(Rgb::from_hex),
+        }
+    }
+
+    /// For an itinerary leg, falling back to the mode name for an unnumbered service.
+    pub fn for_leg(leg: &Leg) -> Self {
+        let line = leg.line.as_ref();
+        let text = line
+            .and_then(|l| l.public_code.clone())
+            .unwrap_or_else(|| mode_label(&leg.mode).to_string());
+        Self::new(text, line.and_then(|l| l.presentation.as_ref()))
+    }
+
+    /// For a departure, falling back to the transport mode and then to nothing.
+    pub fn for_call(call: &EstimatedCall) -> Self {
+        let line = call.line();
+        let text = line
+            .and_then(|l| l.public_code.clone())
+            .or_else(|| line.and_then(|l| l.transport_mode.clone()))
+            .unwrap_or_default();
+        Self::new(text, line.and_then(|l| l.presentation.as_ref()))
     }
 }
 
@@ -130,13 +174,107 @@ impl Style {
 /// terminal size, and a rule wider than the window merely wraps.
 pub const RULE_WIDTH: usize = 72;
 
-/// Everything left of the `→ destination` column on an itinerary line. Walking and
-/// transit legs pad to this same width so the destinations form a single column.
+/// Minimum width of the place-name column on an itinerary row.
 ///
-/// A transit leg spends `STOP_COLUMN` of it on the stop name and the rest on the fixed
-/// fields: badge 5, mode 6, time 5, realtime marker 1, delay 3, plus five separators.
-pub const LEG_PREFIX: usize = 48;
-pub const STOP_COLUMN: usize = LEG_PREFIX - 25;
+/// A minimum rather than a maximum: `pad` never truncates, so a long name like
+/// "Kjelsås stasjon spor 2" pushes the rest of its own row right instead of being
+/// cut. Recognising the stop matters more than a perfectly straight right edge.
+pub const POINT_STOP: usize = 22;
+
+/// The vertical connector drawn between two points of a journey.
+pub const CONNECTOR: &str = "\u{254e}"; // ╎
+
+/// What you board at a point, absent at the start and end of the journey.
+#[derive(Debug, Clone)]
+pub struct Ride {
+    pub badge: Badge,
+    /// Already translated by `mode_label`.
+    pub mode: String,
+    /// Where this vehicle takes you.
+    pub to: String,
+    pub realtime: bool,
+    pub delay_minutes: i64,
+}
+
+/// One row of an itinerary drawn as a timeline.
+#[derive(Debug, Clone)]
+pub enum Step {
+    /// A place, the time you are there, and what you board if anything.
+    Point { time: DateTime<FixedOffset>, place: String, ride: Option<Ride> },
+    /// The stretch between two points under your own power.
+    Walk { mode: String, seconds: i64 },
+}
+
+/// Flatten a journey into the rows both boards draw.
+///
+/// Built here rather than in each renderer because the one-shot board and the watch
+/// view have to agree exactly; the awkward parts are the joins, and doing them twice
+/// is how the two drift apart.
+///
+/// The shape drops a repetition the old layout carried: a walking leg always ends
+/// where the next leg begins, so naming its destination *and* the next boarding stop
+/// printed every intermediate stop twice. Here a walk is just its duration, and each
+/// place is named once, on the row that gives its time.
+pub fn timeline(pattern: &TripPattern, origin: &str, destination: &str) -> Vec<Step> {
+    let mut steps = Vec::new();
+    let name = |raw: Option<&str>| place_name(raw, origin, destination).to_string();
+
+    // Where you set off. Skipped when the journey opens by boarding something, since
+    // that leg's own row already names the same place at the same minute.
+    if let Some(first) = pattern.legs.first()
+        && !first.is_transit()
+    {
+        steps.push(Step::Point {
+            time: pattern.expected_start_time,
+            place: name(first.from_place.name.as_deref()),
+            ride: None,
+        });
+    }
+
+    for leg in &pattern.legs {
+        if !leg.is_transit() {
+            steps.push(Step::Walk {
+                mode: mode_label(&leg.mode).to_string(),
+                seconds: leg.duration,
+            });
+            continue;
+        }
+
+        // The signposted platform belongs with the stop you are standing at.
+        let platform = leg
+            .from_place
+            .quay
+            .as_ref()
+            .and_then(|q| q.public_code.as_deref())
+            .filter(|c| !c.is_empty())
+            .map(|c| format!(" spor {c}"))
+            .unwrap_or_default();
+
+        steps.push(Step::Point {
+            time: leg.expected_start_time,
+            place: format!("{}{platform}", name(leg.from_place.name.as_deref())),
+            ride: Some(Ride {
+                badge: Badge::for_leg(leg),
+                mode: mode_label(&leg.mode).to_string(),
+                to: name(leg.to_place.name.as_deref()),
+                realtime: leg.realtime,
+                delay_minutes: leg.delay_minutes(),
+            }),
+        });
+    }
+
+    // Where you end up. Always drawn, because it is the only row carrying the
+    // arrival time even when the last leg is a ride naming the same place.
+    if let Some(last) = pattern.legs.last() {
+        steps.push(Step::Point {
+            time: pattern.expected_end_time,
+            place: name(last.to_place.name.as_deref()),
+            ride: None,
+        });
+    }
+
+    steps
+}
 
 /// Pad before styling. ANSI escapes count toward `{:<n}`, so padding an already-styled
 /// string silently misaligns every column as soon as colour is on.
@@ -219,6 +357,121 @@ pub fn mode_label(mode: &str) -> &str {
         "air" => "fly",
         "bicycle" => "sykkel",
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod timeline_tests {
+    use super::*;
+    use crate::entur::trip::{TripPattern, TripResponse};
+
+    fn patterns() -> Vec<TripPattern> {
+        let resp: TripResponse =
+            serde_json::from_str(include_str!("../../tests/fixtures/trip.json")).unwrap();
+        resp.trip.trip_patterns
+    }
+
+    fn places(steps: &[Step]) -> Vec<&str> {
+        steps
+            .iter()
+            .filter_map(|s| match s {
+                Step::Point { place, .. } => Some(place.as_str()),
+                Step::Walk { .. } => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_journey_reads_start_boarding_end() {
+        // Fixture pattern 1 is walk -> metro -> walk, so it should flatten to three
+        // named points with a walk between each.
+        let steps = timeline(&patterns()[1], "Storgata", "Hjemme");
+        assert_eq!(places(&steps), ["Storgata", "Jernbanetorget spor 2", "Hjemme"]);
+        assert!(matches!(steps[1], Step::Walk { .. }));
+        assert!(matches!(steps[3], Step::Walk { .. }));
+    }
+
+    /// The point of the layout: a walk ends where the next leg begins, so naming its
+    /// destination would print every intermediate stop twice.
+    #[test]
+    fn a_walk_names_no_place() {
+        for pattern in patterns() {
+            for step in timeline(&pattern, "Storgata", "Hjemme") {
+                if let Step::Walk { mode, seconds } = step {
+                    assert_eq!(mode, "gå");
+                    assert!(seconds > 0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_boarding_point_carries_the_signposted_platform() {
+        let steps = timeline(&patterns()[1], "Storgata", "Hjemme");
+        // Recorded quay publicCode is "2" on the metro leg.
+        assert!(places(&steps).contains(&"Jernbanetorget spor 2"));
+    }
+
+    #[test]
+    fn the_ride_is_attached_to_the_stop_you_board_it_at() {
+        let steps = timeline(&patterns()[1], "Storgata", "Hjemme");
+        let Step::Point { place, ride: Some(ride), .. } = &steps[2] else {
+            panic!("expected a boarding point, got {:?}", steps[2]);
+        };
+        assert_eq!(place, "Jernbanetorget spor 2");
+        assert_eq!(ride.badge.text, "1");
+        assert_eq!(ride.mode, "T-bane");
+        assert_eq!(ride.to, "Gaustad");
+    }
+
+    #[test]
+    fn the_endpoints_carry_the_trip_times_and_no_ride() {
+        let pattern = &patterns()[1];
+        let steps = timeline(pattern, "Storgata", "Hjemme");
+
+        let (first, last) = (steps.first().unwrap(), steps.last().unwrap());
+        let Step::Point { time, ride: None, .. } = first else { panic!("start should be plain") };
+        assert_eq!(*time, pattern.expected_start_time);
+        let Step::Point { time, ride: None, .. } = last else { panic!("end should be plain") };
+        assert_eq!(*time, pattern.expected_end_time);
+    }
+
+    #[test]
+    fn enturs_endpoint_placeholders_never_survive() {
+        for pattern in patterns() {
+            let steps = timeline(&pattern, "Storgata", "Hjemme");
+            for place in places(&steps) {
+                assert!(place != "Origin" && place != "Destination", "leaked: {place}");
+            }
+        }
+    }
+
+    /// A journey that opens by boarding would otherwise print the same place twice at
+    /// the same minute: once as the start row, once as the boarding row.
+    #[test]
+    fn boarding_immediately_produces_no_duplicate_start_row() {
+        let pattern: TripPattern = serde_json::from_str(
+            r#"{
+              "expectedStartTime": "2026-07-31T14:00:00+02:00",
+              "expectedEndTime":   "2026-07-31T14:20:00+02:00",
+              "duration": 1200, "walkDistance": 0.0,
+              "legs": [{
+                "mode": "bus", "distance": 100.0, "duration": 1200,
+                "aimedStartTime":    "2026-07-31T14:00:00+02:00",
+                "expectedStartTime": "2026-07-31T14:00:00+02:00",
+                "expectedEndTime":   "2026-07-31T14:20:00+02:00",
+                "realtime": true,
+                "fromPlace": {"name": "Storgata", "quay": null},
+                "toPlace":   {"name": "Hjemme",   "quay": null},
+                "line": {"publicCode": "5", "name": null, "presentation": null}
+              }]
+            }"#,
+        )
+        .unwrap();
+
+        let steps = timeline(&pattern, "Storgata", "Hjemme");
+        assert_eq!(places(&steps), ["Storgata", "Hjemme"], "expected no repeated start row");
+        assert!(matches!(steps[0], Step::Point { ride: Some(_), .. }), "the ride opens the trip");
     }
 }
 

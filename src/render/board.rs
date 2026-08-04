@@ -1,16 +1,32 @@
 //! The one-shot boards printed to stdout.
 
 use super::{
-    LEG_PREFIX, RULE_WIDTH, Rgb, STOP_COLUMN, Style, delay_marker, duration_human, hhmm,
-    mode_label, pad, place_name, relative,
+    Badge, CONNECTOR, POINT_STOP, RULE_WIDTH, Step, Style, delay_marker, duration_human, hhmm, pad,
+    relative, timeline,
 };
 use crate::entur::nearest::{EstimatedCall, NearbyStop, StopPlace};
-use crate::entur::trip::{Leg, TripPattern};
+use crate::entur::trip::TripPattern;
 use crate::location::Origin;
 use chrono::{DateTime, FixedOffset};
 
 const REALTIME: &str = "\u{25cf}"; // ●
 const SCHEDULED: &str = "\u{25cb}"; // ○
+
+/// The markers are the only part of a board that has to be learned rather than read,
+/// so both boards spell them out rather than leaving the user to infer them.
+fn legend(s: Style) -> String {
+    // Each marker keeps its own colour and only the word beside it is dimmed, so the
+    // legend teaches the colours too. Nesting the two would end the inner escape early.
+    format!(
+        "  {} {}   {} {}   {} {}\n",
+        s.green(REALTIME),
+        s.dim("sanntid"),
+        s.dim(SCHEDULED),
+        s.dim("rutetid"),
+        s.yellow("+2"),
+        s.dim("min forsinket"),
+    )
+}
 
 fn rule(s: Style, heavy: bool) -> String {
     let glyph = if heavy { "\u{2550}" } else { "\u{2500}" };
@@ -65,16 +81,16 @@ pub fn trip_board(
         };
 
         out.push_str(&format!(
-            "  {marker} {} {} \u{2192} {}   {} {}\n",
+            "  {marker} {} {} \u{2192} {}   {}{}\n",
             s.bold(&pad(&relative(p.expected_start_time, now), 12)),
             hhmm(p.expected_start_time),
             hhmm(p.expected_end_time),
-            pad(&duration_human(p.duration), 8),
-            s.dim(&transfer_text),
+            pad(&duration_human(p.duration), 7),
+            s.dim(&format!("\u{00b7} {transfer_text}")),
         ));
 
-        for leg in &p.legs {
-            out.push_str(&leg_line(leg, &origin.name, destination, s));
+        for step in timeline(p, &origin.name, destination) {
+            out.push_str(&step_line(&step, s));
         }
     }
     out.push_str(&rule(s, false));
@@ -86,8 +102,10 @@ pub fn trip_board(
         out.push_str(&format!("  {}\n", s.yellow(&format!("\u{26a0} {text}{suffix}"))));
     }
 
+    out.push('\n');
+    out.push_str(&legend(s));
     out.push_str(&format!(
-        "\n  {}\n\n",
+        "  {}\n\n",
         s.dim(&format!("posisjon: {} \u{00b7} sanntid fra Entur", origin.source.label()))
     ));
     out
@@ -123,54 +141,39 @@ fn situation_footnotes(patterns: &[TripPattern]) -> Vec<(String, usize)> {
         .collect()
 }
 
-fn leg_line(leg: &Leg, origin: &str, destination: &str, s: Style) -> String {
-    let to = place_name(leg.to_place.name.as_deref(), origin, destination);
+/// One row of the timeline. The time column is the spine: every row starts with either
+/// a time or the connector that stands in for one, so the eye can run straight down it.
+fn step_line(step: &Step, s: Style) -> String {
+    match step {
+        Step::Walk { mode, seconds } => format!(
+            "        {}    {}\n",
+            s.dim(CONNECTOR),
+            s.dim(&format!("{mode} {}", duration_human(*seconds)))
+        ),
 
-    if !leg.is_transit() {
-        let text = format!("\u{21b3} {} {}", mode_label(&leg.mode), duration_human(leg.duration));
-        return format!(
-            "      {} {}\n",
-            s.dim(&pad(&text, LEG_PREFIX)),
-            s.dim(&format!("\u{2192} {to}"))
-        );
+        // The start and the end of the journey: a place and a time, nothing boarded.
+        // The five spaces stand in for the delay column so the place names below still
+        // line up with the ones on boarding rows.
+        Step::Point { time, place, ride: None } => {
+            format!("      {}     {}\n", hhmm(*time), place)
+        }
+
+        // Delay sits against the time it moves, leaving the realtime marker to sit
+        // against the badge it describes.
+        Step::Point { time, place, ride: Some(ride) } => {
+            let realtime = if ride.realtime { s.green(REALTIME) } else { s.dim(SCHEDULED) };
+            format!(
+                "      {} {} {} {} {} {} {}\n",
+                hhmm(*time),
+                delay_marker(ride.delay_minutes, s),
+                pad(place, POINT_STOP),
+                realtime,
+                s.badge(&ride.badge.text, ride.badge.bg, ride.badge.fg),
+                pad(&ride.mode, 6),
+                s.dim(&format!("\u{2192} {}", ride.to)),
+            )
+        }
     }
-
-    let line = leg.line.as_ref();
-    let badge_text = line
-        .and_then(|l| l.public_code.clone())
-        // publicCode is genuinely null for some rail services; fall back to the
-        // mode rather than dropping the leg from the itinerary.
-        .unwrap_or_else(|| mode_label(&leg.mode).to_string());
-    let presentation = line.and_then(|l| l.presentation.as_ref());
-    let colour = presentation.and_then(|p| p.colour.as_deref()).and_then(Rgb::from_hex);
-    let text_colour = presentation.and_then(|p| p.text_colour.as_deref()).and_then(Rgb::from_hex);
-
-    let platform = leg
-        .from_place
-        .quay
-        .as_ref()
-        .and_then(|q| q.public_code.as_deref())
-        .filter(|c| !c.is_empty())
-        .map(|c| format!(" spor {c}"))
-        .unwrap_or_default();
-
-    let from = place_name(leg.from_place.name.as_deref(), origin, destination);
-    let realtime = if leg.realtime { s.green(REALTIME) } else { s.dim(SCHEDULED) };
-    let delay = delay_marker(leg.delay_minutes(), s);
-
-    // The badge is a fixed five columns wide in both colour and plain mode, so the
-    // remaining widths are what keep the `→ destination` column straight.
-    let stop = pad(&format!("{from}{platform}"), STOP_COLUMN);
-    format!(
-        "      {} {} {} {} {} {} {}\n",
-        s.badge(&badge_text, colour, text_colour),
-        pad(mode_label(&leg.mode), 6),
-        s.dim(&stop),
-        hhmm(leg.expected_start_time),
-        realtime,
-        delay,
-        s.dim(&format!("\u{2192} {to}")),
-    )
 }
 
 pub fn near_board(
@@ -207,21 +210,17 @@ pub fn near_board(
     }
     out.push_str(&rule(s, false));
 
+    out.push('\n');
+    out.push_str(&legend(s));
     out.push_str(&format!(
-        "\n  {}\n\n",
+        "  {}\n\n",
         s.dim(&format!("posisjon: {} \u{00b7} sanntid fra Entur", origin.source.label()))
     ));
     out
 }
 
 fn departure_line(call: &EstimatedCall, now: DateTime<FixedOffset>, s: Style) -> String {
-    let line = call.line();
-    let badge_text = line
-        .and_then(|l| l.public_code.clone())
-        .unwrap_or_else(|| line.and_then(|l| l.transport_mode.clone()).unwrap_or_default());
-    let presentation = line.and_then(|l| l.presentation.as_ref());
-    let colour = presentation.and_then(|p| p.colour.as_deref()).and_then(Rgb::from_hex);
-    let text_colour = presentation.and_then(|p| p.text_colour.as_deref()).and_then(Rgb::from_hex);
+    let badge = Badge::for_call(call);
 
     let platform = call
         .quay
@@ -234,7 +233,7 @@ fn departure_line(call: &EstimatedCall, now: DateTime<FixedOffset>, s: Style) ->
     if call.cancellation {
         return format!(
             "      {} {} {} {}\n",
-            s.badge(&badge_text, colour, text_colour),
+            s.badge(&badge.text, badge.bg, badge.fg),
             pad(call.destination(), 26),
             s.dim(&pad(&platform, 8)),
             s.red("AVLYST"),
@@ -244,7 +243,7 @@ fn departure_line(call: &EstimatedCall, now: DateTime<FixedOffset>, s: Style) ->
     let realtime = if call.realtime { s.green(REALTIME) } else { s.dim(SCHEDULED) };
     format!(
         "      {} {} {} {} {} {} {}\n",
-        s.badge(&badge_text, colour, text_colour),
+        s.badge(&badge.text, badge.bg, badge.fg),
         pad(call.destination(), 26),
         s.dim(&pad(&platform, 8)),
         hhmm(call.expected_departure_time),

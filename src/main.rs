@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod doctor;
 mod entur;
 mod location;
 mod render;
@@ -31,8 +32,10 @@ fn main() -> std::process::ExitCode {
 /// Write to stdout, treating a closed pipe as a normal end rather than an error.
 ///
 /// Without this, `ruter hjem | head -5` panics as soon as `head` exits, which is
-/// the default behaviour of the `print!` macros.
-fn emit(text: &str) -> Result<()> {
+/// the default behaviour of the `print!` macros. Every command writes through
+/// here, including the list and confirmation output, so that piping any of them
+/// into `head` ends quietly rather than panicking.
+pub fn emit(text: &str) -> Result<()> {
     let mut out = std::io::stdout().lock();
     match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
         Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
@@ -41,11 +44,20 @@ fn emit(text: &str) -> Result<()> {
 }
 
 fn run(cli: Cli) -> Result<()> {
-    // Handled before the config is touched. `deny_unknown_fields` means a config written
-    // by a newer version stops an older binary dead, and upgrading is exactly the way out
-    // of that; it must not need a readable config.
-    if let Some(Command::Upgrade { check }) = &cli.command {
-        return upgrade::run(*check);
+    // Both handled before the config is touched. `deny_unknown_fields` means a config
+    // written by a newer version stops an older binary dead; upgrading is the way out of
+    // that, and diagnosing it is exactly what `doctor` is for. Neither may need a
+    // readable config to run.
+    match &cli.command {
+        Some(Command::Upgrade { check }) => return upgrade::run(*check),
+        Some(Command::Doctor) => return doctor::run(),
+        _ => {}
+    }
+
+    // `--watch` returns into a full-screen loop that never reaches the `--json`
+    // branch, so the two together would silently print nothing at all.
+    if cli.common.json && cli.common.watch {
+        bail!("--json og --watch kan ikke brukes sammen. Velg \u{e9}n av dem.");
     }
 
     let config = Config::load()?;
@@ -59,7 +71,9 @@ fn run(cli: Cli) -> Result<()> {
             cmd_near(&client, &config, &cli.common, style, radius, stops)
         }
         Some(Command::Where) => cmd_where(&client, &config, &cli.common, style),
-        Some(Command::Upgrade { .. }) => unreachable!("handled before the config is loaded"),
+        Some(Command::Upgrade { .. }) | Some(Command::Doctor) => {
+            unreachable!("handled before the config is loaded")
+        }
         // Joined back into one string: the destination is collected word by word so
         // that an address with spaces does not have to be quoted.
         None => {
@@ -80,6 +94,13 @@ fn cmd_trip(
     style: Style,
     destination: Option<String>,
 ) -> Result<()> {
+    // Checked up front, before anything touches GPS or the geocoder: a typo in a flag
+    // should not cost the user a position lookup and two network round trips first.
+    // Checked here rather than in the client so that it fails as a plain CLI error,
+    // instead of opening the watch view only to fill it with a fetch error.
+    let modes = common.modes.clone().unwrap_or_else(|| config.modes.clone());
+    entur::validate_modes(&modes)?;
+
     let destination = destination.or_else(|| config.default_destination.clone()).context(
         "ingen destinasjon oppgitt.\n\
          Bruk `ruter <sted>`, eller sett `default_destination` i konfigurasjonen.",
@@ -113,7 +134,7 @@ fn cmd_trip(
         via,
         num_patterns: common.count.unwrap_or(config.num_results),
         max_walk_minutes: config.max_walk_minutes,
-        modes: common.modes.clone().unwrap_or_else(|| config.modes.clone()),
+        modes,
     };
 
     if common.watch {
@@ -149,13 +170,13 @@ fn choose(
         return Ok(matches.into_iter().next().expect("geocode errors when empty"));
     }
 
-    println!("Treff for \"{query}\":");
+    let mut prompt = format!("Treff for \"{query}\":\n");
     for (i, m) in matches.iter().enumerate() {
         let layer = m.layer.as_deref().unwrap_or("");
-        println!("  {}. {}  {}", i + 1, m.label, layer);
+        prompt.push_str(&format!("  {}. {}  {}\n", i + 1, m.label, layer));
     }
-    print!("Velg [1-{}] (Enter = 1): ", matches.len());
-    std::io::stdout().flush()?;
+    prompt.push_str(&format!("Velg [1-{}] (Enter = 1): ", matches.len()));
+    emit(&prompt)?;
 
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;
@@ -194,14 +215,15 @@ fn cmd_route(
 ) -> Result<()> {
     match action {
         RouteAction::List => {
+            let mut out = String::new();
             if config.routes.is_empty() {
-                println!(
+                out.push_str(
                     "Ingen lagrede reiseveier enn\u{e5}. Legg til \u{e9}n med:\n  \
-                     ruter route add sognsvann --to Sognsvann --via \"Ullev\u{e5}l stadion, Oslo\""
+                     ruter route add sognsvann --to Sognsvann --via \"Ullev\u{e5}l stadion, Oslo\"\n",
                 );
             }
             for (name, route) in &config.routes {
-                println!("{name:<12} {}", route.label);
+                out.push_str(&format!("{name:<12} {}\n", route.label));
                 let start = match &route.from {
                     Some(place) => place.label.as_str(),
                     None => "der du er n\u{e5}",
@@ -209,8 +231,9 @@ fn cmd_route(
                 let mut chain = vec![start.to_string()];
                 chain.extend(route.via.iter().map(|w| w.label.clone()));
                 chain.push(route.to.label.clone());
-                println!("{:<12} {}", "", chain.join(" \u{2192} "));
+                out.push_str(&format!("{:<12} {}\n", "", chain.join(" \u{2192} ")));
             }
+            emit(&out)?;
         }
 
         RouteAction::Remove { name } => {
@@ -218,7 +241,7 @@ fn cmd_route(
                 bail!("fant ingen lagret reisevei som heter \"{name}\"");
             }
             let path = config.save()?;
-            println!("Fjernet \"{name}\" fra {}", path.display());
+            emit(&format!("Fjernet \"{name}\" fra {}\n", path.display()))?;
         }
 
         RouteAction::Add { name, to, via, yes } => {
@@ -258,11 +281,12 @@ fn cmd_route(
             config.routes.insert(name.clone(), route);
             let path = config.save()?;
 
-            println!("Lagret reiseveien \"{name}\": {label}");
+            let mut out = format!("Lagret reiseveien \"{name}\": {label}\n");
             if !chain.is_empty() {
-                println!("Via: {chain}");
+                out.push_str(&format!("Via: {chain}\n"));
             }
-            println!("{}\nKj\u{f8}r den med: ruter {name}", path.display());
+            out.push_str(&format!("{}\nKj\u{f8}r den med: ruter {name}\n", path.display()));
+            emit(&out)?;
         }
     }
     Ok(())
@@ -385,19 +409,24 @@ fn cmd_where(client: &Client, config: &Config, common: &Common, style: Style) ->
 fn cmd_config(action: ConfigAction, mut config: Config, client: &Client) -> Result<()> {
     match action {
         ConfigAction::Path => {
-            println!("{}", config::config_path()?.display());
+            emit(&format!("{}\n", config::config_path()?.display()))?;
         }
 
         ConfigAction::List => {
+            let mut out = String::new();
             if config.places.is_empty() {
-                println!(
+                out.push_str(
                     "Ingen lagrede steder enn\u{e5}. Legg til ett med:\n  \
-                     ruter config add hjem \"Dronningens gate 40, Oslo\""
+                     ruter config add hjem \"Dronningens gate 40, Oslo\"\n",
                 );
             }
             for (name, place) in &config.places {
-                println!("{name:<12} {}  ({:.5}, {:.5})", place.label, place.lat, place.lon);
+                out.push_str(&format!(
+                    "{name:<12} {}  ({:.5}, {:.5})\n",
+                    place.label, place.lat, place.lon
+                ));
             }
+            emit(&out)?;
         }
 
         ConfigAction::Remove { name } => {
@@ -405,7 +434,7 @@ fn cmd_config(action: ConfigAction, mut config: Config, client: &Client) -> Resu
                 bail!("fant ikke noe lagret sted som heter \"{name}\"");
             }
             let path = config.save()?;
-            println!("Fjernet \"{name}\" fra {}", path.display());
+            emit(&format!("Fjernet \"{name}\" fra {}\n", path.display()))?;
         }
 
         ConfigAction::Add { name, query, yes } => {
@@ -431,13 +460,13 @@ fn cmd_config(action: ConfigAction, mut config: Config, client: &Client) -> Resu
                 Place { label: chosen.label.clone(), lat: chosen.coord.lat, lon: chosen.coord.lon },
             );
             let path = config.save()?;
-            println!(
-                "Lagret \"{name}\" \u{2192} {} ({:.5}, {:.5})\n{}",
+            emit(&format!(
+                "Lagret \"{name}\" \u{2192} {} ({:.5}, {:.5})\n{}\n",
                 chosen.label,
                 chosen.coord.lat,
                 chosen.coord.lon,
                 path.display()
-            );
+            ))?;
         }
     }
     Ok(())

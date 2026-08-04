@@ -40,3 +40,35 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+
+  # scripts/install.sh on main is what the README's curl one-liner and every
+  # `ruter upgrade` fetch and execute, so a break there hits people who already
+  # have the tool and no release is involved to catch it. Nothing else in CI runs
+  # this file.
+  install-script:
+    name: Install script
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Preinstalled on the Ubuntu runner, absent on macOS — and the scripts are
+      # the same either way, so linting once is enough.
+      - name: Shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck scripts/install.sh scripts/install-macos.sh .github/release-assets/install-macos.sh
+
+      # Installs the latest *released* tarball, which is the thing this script has
+      # to keep working against. RUTER_NO_PATH keeps it out of the runner's profile.
+      - name: Install the latest release into a temp dir
+        run: |
+          set -eux
+          dir="$(mktemp -d)"
+          RUTER_NO_PATH=1 \
+          RUTER_BIN_DIR="$dir/bin" \
+          RUTER_APP_DIR="$dir/app/Ruter.app" \
+            sh scripts/install.sh
+          "$dir/bin/ruter" --version

@@ -10,8 +10,8 @@ use crate::entur::nearest::{NearbyStop, StopPlace};
 use crate::entur::trip::{TripPattern, TripQuery};
 use crate::location::Origin;
 use crate::render::{
-    LEG_PREFIX, RULE_WIDTH, Rgb, STOP_COLUMN, delay_marker, duration_human, hhmm, mode_label, pad,
-    place_name, relative,
+    Badge, CONNECTOR, POINT_STOP, RULE_WIDTH, Rgb, Step, delay_marker, duration_human, hhmm, pad,
+    relative, timeline,
 };
 use anyhow::Result;
 use chrono::{DateTime, FixedOffset, Local};
@@ -76,7 +76,9 @@ pub fn run_trip(
 ) -> Result<()> {
     let (from, to) = (origin.coord, target.coord);
     let query = query.clone();
-    let client_name = client_name.to_string();
+    // Built once and moved into the poller: a fresh client per poll would throw
+    // away the connection and pay a new TLS handshake on every refresh.
+    let client = Client::new(client_name);
     let title = format!("{}  \u{2192}  {}", origin.name, target.name);
     let source = origin.source;
     let (origin_name, dest_name) = (origin.name.clone(), target.name.clone());
@@ -85,10 +87,7 @@ pub fn run_trip(
         title,
         source,
         interval_secs,
-        move || {
-            let client = Client::new(&client_name);
-            client.trip(from, to, &query)
-        },
+        move || client.trip(from, to, &query),
         move |d: &Vec<TripPattern>, now| trip_lines(d, now, &origin_name, &dest_name),
     )
 }
@@ -102,7 +101,7 @@ pub fn run_near(
     interval_secs: u64,
 ) -> Result<()> {
     let origin_owned = origin.clone();
-    let client_name = client_name.to_string();
+    let client = Client::new(client_name);
     let title = format!("Avganger n\u{e6}r {}", origin.name);
     let source = origin.source;
 
@@ -110,10 +109,7 @@ pub fn run_near(
         title,
         source,
         interval_secs,
-        move || {
-            let client = Client::new(&client_name);
-            crate::fetch_near(&client, &origin_owned, radius, stop_count, per_stop)
-        },
+        move || crate::fetch_near(&client, &origin_owned, radius, stop_count, per_stop),
         |d: &Vec<(NearbyStop, Option<StopPlace>)>, now| near_lines(d, now),
     )
 }
@@ -134,7 +130,8 @@ where
     let (cmd_tx, cmd_rx) = channel::<Cmd>();
     let (data_tx, data_rx) = channel::<Result<T>>();
 
-    let handle = std::thread::spawn(move || poller(fetch, cmd_rx, data_tx, interval));
+    let handle =
+        std::thread::spawn(move || poller(fetch, cmd_rx, data_tx, interval, MANUAL_REFRESH_FLOOR));
 
     // ratatui::run installs a panic hook and restores the terminal on the way
     // out, so a panic here cannot leave the shell in raw mode.
@@ -175,19 +172,48 @@ where
     result
 }
 
-/// `recv_timeout` gives us scheduled polling and instant manual refresh from a
+/// The soonest a manual `r` can trigger a fetch after the previous one.
+///
+/// Terminal key auto-repeat turns a held `r` into a stream of `RefreshNow`, and
+/// every one of them used to mean another immediate request against a free public
+/// API. Short enough that a deliberate press still feels instant.
+const MANUAL_REFRESH_FLOOR: Duration = Duration::from_secs(3);
+
+/// `recv_timeout` gives us scheduled polling and prompt manual refresh from a
 /// single primitive, with no condvar and no busy-waiting.
-fn poller<T, F>(fetch: F, cmd_rx: Receiver<Cmd>, data_tx: Sender<Result<T>>, interval: Duration)
-where
+///
+/// A manual refresh inside `floor` is not dropped, it is *deferred*: pressing `r`
+/// twice in a second still refreshes, once, as soon as the floor lets it. Dropping
+/// it instead would make the key look broken; honouring each one would let a held
+/// key burst.
+fn poller<T, F>(
+    fetch: F,
+    cmd_rx: Receiver<Cmd>,
+    data_tx: Sender<Result<T>>,
+    interval: Duration,
+    floor: Duration,
+) where
     F: Fn() -> Result<T>,
 {
     loop {
         if data_tx.send(fetch()).is_err() {
             return; // UI has gone away
         }
-        match cmd_rx.recv_timeout(interval) {
-            Err(RecvTimeoutError::Timeout) | Ok(Cmd::RefreshNow) => continue,
-            Ok(Cmd::Quit) | Err(RecvTimeoutError::Disconnected) => return,
+        let fetched_at = Instant::now();
+        let mut requested = false;
+
+        loop {
+            // Whichever comes first: the floor expiring on a refresh someone has
+            // already asked for, or the next scheduled poll.
+            let due = if requested { floor } else { interval };
+            let Some(wait) = due.checked_sub(fetched_at.elapsed()) else { break };
+
+            match cmd_rx.recv_timeout(wait) {
+                Err(RecvTimeoutError::Timeout) => break,
+                // Coalesces: twenty queued presses set one flag.
+                Ok(Cmd::RefreshNow) => requested = true,
+                Ok(Cmd::Quit) | Err(RecvTimeoutError::Disconnected) => return,
+            }
         }
     }
 }
@@ -228,11 +254,17 @@ fn draw<T, R>(
     };
     frame.render_widget(Paragraph::new(lines), body);
 
+    // Same legend the one-shot board prints, sharing the line with the key hints.
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            "  q avslutt   r oppdater n\u{e5}",
-            TuiStyle::default().add_modifier(Modifier::DIM),
-        ))),
+        Paragraph::new(Line::from(vec![
+            dim("  q avslutt   r oppdater n\u{e5}     "),
+            realtime_span(true),
+            dim(" sanntid   "),
+            dim("\u{25cb}"),
+            dim(" rutetid   "),
+            Span::styled("+2", TuiStyle::default().fg(Color::Yellow)),
+            dim(" min forsinket"),
+        ])),
         footer,
     );
 }
@@ -347,6 +379,13 @@ fn trip_lines(
         if i > 0 {
             lines.push(rule_line());
         }
+        let transfers = p.transit_legs().count().saturating_sub(1);
+        let transfer_text = match transfers {
+            0 => "direkte".to_string(),
+            1 => "1 bytte".to_string(),
+            n => format!("{n} bytter"),
+        };
+
         lines.push(Line::from(vec![
             Span::raw("  "),
             realtime_span(p.has_realtime()),
@@ -360,47 +399,48 @@ fn trip_lines(
                 hhmm(p.expected_start_time),
                 hhmm(p.expected_end_time)
             )),
-            dim(duration_human(p.duration)),
+            dim(pad(&duration_human(p.duration), 7)),
+            dim(format!("\u{00b7} {transfer_text}")),
         ]));
 
-        for leg in &p.legs {
-            let to = place_name(leg.to_place.name.as_deref(), origin, destination).to_string();
-            if !leg.is_transit() {
-                let text =
-                    format!("\u{21b3} {} {}", mode_label(&leg.mode), duration_human(leg.duration));
-                lines.push(Line::from(vec![
-                    Span::raw("      "),
-                    dim(pad(&text, LEG_PREFIX)),
-                    dim(format!(" \u{2192} {to}")),
-                ]));
-                continue;
-            }
-
-            let line = leg.line.as_ref();
-            let badge = line
-                .and_then(|l| l.public_code.clone())
-                .unwrap_or_else(|| mode_label(&leg.mode).to_string());
-            let presentation = line.and_then(|l| l.presentation.as_ref());
-            let colour = presentation.and_then(|p| p.colour.as_deref()).and_then(Rgb::from_hex);
-            let text_colour =
-                presentation.and_then(|p| p.text_colour.as_deref()).and_then(Rgb::from_hex);
-            let from = place_name(leg.from_place.name.as_deref(), origin, destination);
-
-            lines.push(Line::from(vec![
-                Span::raw("      "),
-                Span::styled(format!(" {badge:^3} "), badge_style(colour, text_colour)),
-                Span::raw(format!(" {} ", pad(mode_label(&leg.mode), 6))),
-                dim(pad(from, STOP_COLUMN)),
-                Span::raw(format!(" {} ", hhmm(leg.expected_start_time))),
-                realtime_span(leg.realtime),
-                Span::raw(" "),
-                delay_span(leg.delay_minutes()),
-                dim(format!(" \u{2192} {to}")),
-            ]));
+        // Same rows as the one-shot board, drawn as spans instead of a string.
+        for step in timeline(p, origin, destination) {
+            lines.push(step_line(&step));
         }
     }
     lines.push(rule_line());
     lines
+}
+
+fn step_line(step: &Step) -> Line<'static> {
+    match step {
+        Step::Walk { mode, seconds } => Line::from(vec![
+            Span::raw("        "),
+            dim(CONNECTOR),
+            dim(format!("    {mode} {}", duration_human(*seconds))),
+        ]),
+
+        Step::Point { time, place, ride: None } => {
+            Line::from(vec![Span::raw("      "), Span::raw(format!("{}     {place}", hhmm(*time)))])
+        }
+
+        Step::Point { time, place, ride: Some(ride) } => Line::from(vec![
+            Span::raw("      "),
+            Span::raw(format!("{} ", hhmm(*time))),
+            delay_span(ride.delay_minutes),
+            Span::raw(" "),
+            Span::raw(pad(place, POINT_STOP)),
+            Span::raw(" "),
+            realtime_span(ride.realtime),
+            Span::raw(" "),
+            Span::styled(
+                format!(" {:^3} ", ride.badge.text),
+                badge_style(ride.badge.bg, ride.badge.fg),
+            ),
+            Span::raw(format!(" {} ", pad(&ride.mode, 6))),
+            dim(format!("\u{2192} {}", ride.to)),
+        ]),
+    }
 }
 
 /// Matches the rules the one-shot board draws, so the two views read the same.
@@ -436,20 +476,12 @@ fn near_lines(
         }
 
         for call in calls {
-            let line = call.line();
-            let badge = line
-                .and_then(|l| l.public_code.clone())
-                .or_else(|| line.and_then(|l| l.transport_mode.clone()))
-                .unwrap_or_default();
-            let presentation = line.and_then(|l| l.presentation.as_ref());
-            let colour = presentation.and_then(|p| p.colour.as_deref()).and_then(Rgb::from_hex);
-            let text_colour =
-                presentation.and_then(|p| p.text_colour.as_deref()).and_then(Rgb::from_hex);
+            let badge = Badge::for_call(call);
 
             if call.cancellation {
                 lines.push(Line::from(vec![
                     Span::raw("      "),
-                    Span::styled(format!(" {badge:^3} "), badge_style(colour, text_colour)),
+                    Span::styled(format!(" {:^3} ", badge.text), badge_style(badge.bg, badge.fg)),
                     Span::raw(format!(" {} ", pad(call.destination(), 26))),
                     Span::styled("AVLYST", TuiStyle::default().fg(Color::Red)),
                 ]));
@@ -458,7 +490,7 @@ fn near_lines(
 
             lines.push(Line::from(vec![
                 Span::raw("      "),
-                Span::styled(format!(" {badge:^3} "), badge_style(colour, text_colour)),
+                Span::styled(format!(" {:^3} ", badge.text), badge_style(badge.bg, badge.fg)),
                 Span::raw(format!(" {} ", pad(call.destination(), 26))),
                 Span::raw(format!("{} ", hhmm(call.expected_departure_time))),
                 realtime_span(call.realtime),
@@ -518,26 +550,77 @@ mod tests {
         assert!(!lines.is_empty());
     }
 
+    fn flatten(lines: &[Line<'static>]) -> Vec<String> {
+        lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+            .collect()
+    }
+
     /// The watch view cannot be eyeballed the way the one-shot board can, so the column
-    /// layout is pinned here instead: walking and transit legs must put `→` in the same
-    /// place, which is the whole point of padding them to `LEG_PREFIX`.
+    /// layout is pinned here instead. The time column is the spine of the timeline: every
+    /// point row must start it at the same offset, or the journey stops reading downward.
     #[test]
-    fn itinerary_legs_share_one_destination_column() {
+    fn the_time_column_is_a_straight_spine() {
         let resp: TripResponse =
             serde_json::from_str(include_str!("../tests/fixtures/trip.json")).unwrap();
         let lines = trip_lines(&resp.trip.trip_patterns, now(), "Storgata", "Hjemme");
 
-        let columns: Vec<usize> = lines
+        let offsets: Vec<usize> = flatten(&lines)
             .iter()
-            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
-            .filter(|text| text.starts_with("      ") && text.contains('\u{2192}'))
-            .map(|text| text.chars().take_while(|c| *c != '\u{2192}').count())
+            // Point rows only: a leading run of spaces then "HH:MM".
+            .filter(|t| {
+                let rest = t.trim_start_matches(' ');
+                rest.len() >= 5 && rest.as_bytes()[2] == b':' && rest[..2].parse::<u32>().is_ok()
+            })
+            .map(|t| t.len() - t.trim_start_matches(' ').len())
             .collect();
 
-        assert!(!columns.is_empty(), "expected itinerary legs in the fixture");
+        assert!(!offsets.is_empty(), "expected point rows in the fixture");
         assert!(
-            columns.windows(2).all(|w| w[0] == w[1]),
-            "destination arrows are not in one column: {columns:?}"
+            offsets.windows(2).all(|w| w[0] == w[1]),
+            "times are not in one column: {offsets:?}"
+        );
+    }
+
+    /// The one-shot board and the watch view draw the same `timeline`, so they must
+    /// agree row for row. Drifting apart is the failure this whole shared model exists
+    /// to prevent, and only one of the two surfaces is easy to eyeball.
+    #[test]
+    fn the_watch_view_and_the_one_shot_board_agree_row_for_row() {
+        use crate::entur::Coord;
+        use crate::location::{Origin, Source};
+        use crate::render::{Style, board};
+
+        let resp: TripResponse =
+            serde_json::from_str(include_str!("../tests/fixtures/trip.json")).unwrap();
+        let patterns = &resp.trip.trip_patterns;
+
+        let origin = Origin {
+            coord: Coord { lat: 59.9139, lon: 10.7522 },
+            name: "Storgata".to_string(),
+            source: Source::Gps,
+        };
+        let one_shot = board::trip_board(patterns, &origin, "Hjemme", now(), Style::plain());
+
+        // Compare the timeline rows: the ones carrying a time or the walk connector.
+        let interesting = |t: &str| {
+            let r = t.trim();
+            r.contains(CONNECTOR) || (r.len() >= 5 && r.as_bytes()[2] == b':')
+        };
+        let from_board: Vec<String> =
+            one_shot.lines().filter(|l| interesting(l)).map(|l| l.trim().to_string()).collect();
+        let from_watch: Vec<String> = flatten(&trip_lines(patterns, now(), "Storgata", "Hjemme"))
+            .iter()
+            .filter(|l| interesting(l))
+            .map(|l| l.trim().to_string())
+            .collect();
+
+        assert!(!from_board.is_empty(), "expected timeline rows on the board");
+        assert_eq!(
+            from_board.len(),
+            from_watch.len(),
+            "the two surfaces drew a different number of rows"
         );
     }
 
@@ -557,5 +640,100 @@ mod tests {
     fn empty_results_still_render_a_row() {
         assert_eq!(trip_lines(&[], now(), "A", "B").len(), 1);
         assert_eq!(near_lines(&[], now()).len(), 1);
+    }
+
+    // The refresh key talks to a free public API, so these pin the rate it can be
+    // driven at. A short floor is passed in rather than the shipped three seconds
+    // so the suite stays fast.
+    mod refresh {
+        use super::super::*;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        const FLOOR: Duration = Duration::from_millis(150);
+        /// Long enough that no scheduled poll can be mistaken for a manual one.
+        const NEVER: Duration = Duration::from_secs(3600);
+
+        struct Harness {
+            calls: Arc<AtomicUsize>,
+            cmd_tx: Sender<Cmd>,
+            data_rx: Receiver<Result<u32>>,
+            handle: Option<std::thread::JoinHandle<()>>,
+        }
+
+        impl Harness {
+            fn start(interval: Duration) -> Self {
+                let calls = Arc::new(AtomicUsize::new(0));
+                let counter = calls.clone();
+                let (cmd_tx, cmd_rx) = channel::<Cmd>();
+                let (data_tx, data_rx) = channel::<Result<u32>>();
+
+                let handle = std::thread::spawn(move || {
+                    poller(
+                        move || Ok(counter.fetch_add(1, Ordering::SeqCst) as u32),
+                        cmd_rx,
+                        data_tx,
+                        interval,
+                        FLOOR,
+                    )
+                });
+                Harness { calls, cmd_tx, data_rx, handle: Some(handle) }
+            }
+
+            fn await_fetch(&self, within: Duration) -> bool {
+                self.data_rx.recv_timeout(within).is_ok()
+            }
+        }
+
+        impl Drop for Harness {
+            fn drop(&mut self) {
+                let _ = self.cmd_tx.send(Cmd::Quit);
+                if let Some(h) = self.handle.take() {
+                    let _ = h.join();
+                }
+            }
+        }
+
+        #[test]
+        fn a_held_key_produces_one_refetch_not_twenty() {
+            let h = Harness::start(NEVER);
+            assert!(h.await_fetch(Duration::from_secs(5)), "expected the initial fetch");
+
+            // What terminal auto-repeat delivers.
+            for _ in 0..20 {
+                h.cmd_tx.send(Cmd::RefreshNow).unwrap();
+            }
+
+            assert!(h.await_fetch(Duration::from_secs(5)), "the burst should still refresh once");
+            assert!(
+                !h.await_fetch(FLOOR * 4),
+                "a held key hit the network more than once per floor"
+            );
+            assert_eq!(
+                h.calls.load(Ordering::SeqCst),
+                2,
+                "expected the initial fetch plus exactly one coalesced refresh"
+            );
+        }
+
+        #[test]
+        fn a_refresh_inside_the_floor_is_deferred_not_dropped() {
+            let h = Harness::start(NEVER);
+            assert!(h.await_fetch(Duration::from_secs(5)), "expected the initial fetch");
+
+            // Immediately after a fetch, so it lands well inside the floor.
+            h.cmd_tx.send(Cmd::RefreshNow).unwrap();
+
+            // Dropping it would make `r` look broken; it must still arrive.
+            assert!(h.await_fetch(Duration::from_secs(5)), "a single early press was swallowed");
+            assert_eq!(h.calls.load(Ordering::SeqCst), 2);
+        }
+
+        #[test]
+        fn the_scheduled_poll_still_fires_without_any_key() {
+            let h = Harness::start(FLOOR);
+            assert!(h.await_fetch(Duration::from_secs(5)), "expected the initial fetch");
+            assert!(h.await_fetch(Duration::from_secs(5)), "the interval poll stopped happening");
+        }
     }
 }

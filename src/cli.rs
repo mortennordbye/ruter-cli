@@ -110,6 +110,11 @@ pub enum Command {
     /// Show where ruter thinks you are, and why. Useful when GPS misbehaves.
     Where,
 
+    /// Print a diagnostics report to paste into a bug report.
+    ///
+    /// Contains no coordinates, addresses or place names.
+    Doctor,
+
     /// Check for a newer version and install it.
     Upgrade {
         /// Only report whether a new version exists.

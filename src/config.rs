@@ -129,6 +129,14 @@ impl Config {
         toml::from_str(&text).with_context(|| format!("ugyldig konfigurasjon i {}", path.display()))
     }
 
+    /// Write the config, replacing the old file only once the new one is complete.
+    ///
+    /// A plain write truncates first, so an interruption or a full disk would leave
+    /// a half-written file — and with `deny_unknown_fields` a truncated table does
+    /// not merely lose the last place, it stops the next run dead. Writing to a
+    /// sibling temp file and renaming means the config is always one whole version
+    /// or the other. The temp file shares the directory so the rename stays on one
+    /// filesystem, which is what makes it atomic.
     pub fn save(&self) -> Result<PathBuf> {
         let path = config_path()?;
         if let Some(parent) = path.parent() {
@@ -137,8 +145,15 @@ impl Config {
         }
         let text =
             toml::to_string_pretty(self).context("kunne ikke serialisere konfigurasjonen")?;
-        std::fs::write(&path, text)
-            .with_context(|| format!("kunne ikke skrive {}", path.display()))?;
+
+        let tmp = path.with_extension("toml.tmp");
+        std::fs::write(&tmp, text)
+            .with_context(|| format!("kunne ikke skrive {}", tmp.display()))?;
+
+        if let Err(e) = std::fs::rename(&tmp, &path) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e).with_context(|| format!("kunne ikke skrive {}", path.display()));
+        }
         Ok(path)
     }
 
