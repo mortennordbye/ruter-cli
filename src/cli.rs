@@ -11,6 +11,7 @@ use clap::{Args, Parser, Subcommand};
     after_help = "Eksempler:\n  \
         ruter config add hjem \"Dronningens gate 40, Oslo\"\n  \
         ruter hjem                 reise fra der du er n\u{e5} til \"hjem\"\n  \
+        ruter Brekkelia 3D         adresser trenger ikke anf\u{f8}rselstegn\n  \
         ruter hjem --watch         samme, men oppdaterer seg selv\n  \
         ruter near                 avganger fra holdeplasser i n\u{e6}rheten\n  \
         ruter --from jobb hjem     reise mellom to lagrede steder\n  \
@@ -22,7 +23,12 @@ use clap::{Args, Parser, Subcommand};
 pub struct Cli {
     /// Destination: a saved place, "lat,lon", or an address to look up.
     /// Defaults to `default_destination` from the config.
-    pub destination: Option<String>,
+    ///
+    /// Collected as words and joined, so an address with spaces needs no quotes:
+    /// `ruter Brekkelia 3D` and `ruter "Brekkelia 3D"` are the same thing. A
+    /// subcommand still wins the first word, so `ruter near` is unaffected.
+    #[arg(value_name = "DESTINASJON")]
+    pub destination: Vec<String>,
 
     #[command(flatten)]
     pub common: Common,
@@ -155,4 +161,58 @@ pub enum ConfigAction {
     Remove { name: String },
     /// Print the path to the config file.
     Path,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// A variadic positional sitting next to subcommands is the kind of thing
+    /// clap only complains about at runtime, so assert the definition is sound.
+    #[test]
+    fn the_definition_is_internally_consistent() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn a_destination_may_be_several_words() {
+        let cli = Cli::parse_from(["ruter", "Brekkelia", "3D"]);
+        assert_eq!(cli.destination, ["Brekkelia", "3D"]);
+        assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn one_word_and_no_word_destinations_still_parse() {
+        assert_eq!(Cli::parse_from(["ruter", "hjem"]).destination, ["hjem"]);
+        assert!(Cli::parse_from(["ruter"]).destination.is_empty());
+    }
+
+    /// The whole risk of a variadic positional: it must not swallow `near`.
+    #[test]
+    fn subcommands_still_win_the_first_word() {
+        assert!(matches!(Cli::parse_from(["ruter", "where"]).command, Some(Command::Where)));
+        assert!(matches!(Cli::parse_from(["ruter", "near"]).command, Some(Command::Near { .. })));
+        assert!(Cli::parse_from(["ruter", "where"]).destination.is_empty());
+    }
+
+    #[test]
+    fn flags_survive_a_multi_word_destination() {
+        let cli = Cli::parse_from(["ruter", "--from", "jobb", "Brekkelia", "3D", "--watch"]);
+        assert_eq!(cli.common.from.as_deref(), Some("jobb"));
+        assert_eq!(cli.destination, ["Brekkelia", "3D"]);
+        assert!(cli.common.watch);
+    }
+
+    /// `config add` already joined its words; that must keep working.
+    #[test]
+    fn config_add_still_takes_an_unquoted_address() {
+        let cli = Cli::parse_from(["ruter", "config", "add", "hjem", "Brekkelia", "3D"]);
+        let Some(Command::Config { action: ConfigAction::Add { name, query, .. } }) = cli.command
+        else {
+            panic!("expected `config add`");
+        };
+        assert_eq!(name, "hjem");
+        assert_eq!(query.join(" "), "Brekkelia 3D");
+    }
 }

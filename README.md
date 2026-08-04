@@ -96,7 +96,8 @@ skrive inn lengde- og breddegrad selv.
 | `ruter hjem --watch` | samme, men oppdaterer seg selv |
 | `ruter near` | avganger fra holdeplasser i nærheten |
 | `ruter --from jobb hjem` | reise mellom to lagrede steder |
-| `ruter "Oslo S"` | destinasjonen kan også være en adresse eller `59.91,10.75` |
+| `ruter Oslo S` | destinasjonen kan også være en adresse eller `59.91,10.75` |
+| `ruter Brekkelia 3D` | adresser med mellomrom trenger ikke anførselstegn |
 | `ruter hjem --json` | rå JSON, for skripting |
 | `ruter where` | hvor den tror du er, og hvilken kilde den brukte |
 | `ruter upgrade` | sjekk om det finnes en nyere versjon, og installer den |
