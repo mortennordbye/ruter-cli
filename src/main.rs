@@ -50,6 +50,12 @@ fn run(cli: Cli) -> Result<()> {
         return upgrade::run(*check);
     }
 
+    // `--watch` returns into a full-screen loop that never reaches the `--json`
+    // branch, so the two together would silently print nothing at all.
+    if cli.common.json && cli.common.watch {
+        bail!("--json og --watch kan ikke brukes sammen. Velg \u{e9}n av dem.");
+    }
+
     let config = Config::load()?;
     let client = Client::new(&config.client_name);
     let style = Style::detect(cli.common.colour_override());
