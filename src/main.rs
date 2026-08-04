@@ -60,7 +60,12 @@ fn run(cli: Cli) -> Result<()> {
         }
         Some(Command::Where) => cmd_where(&client, &config, &cli.common, style),
         Some(Command::Upgrade { .. }) => unreachable!("handled before the config is loaded"),
-        None => cmd_trip(&client, &config, &cli.common, style, cli.destination),
+        // Joined back into one string: the destination is collected word by word so
+        // that an address with spaces does not have to be quoted.
+        None => {
+            let destination = (!cli.destination.is_empty()).then(|| cli.destination.join(" "));
+            cmd_trip(&client, &config, &cli.common, style, destination)
+        }
     }
 }
 
