@@ -19,49 +19,46 @@ pub fn run(check_only: bool) -> Result<()> {
     let latest = latest_release()?;
     let latest_version = latest.trim_start_matches('v');
 
-    println!("Installert versjon: {CURRENT}");
-    println!("Nyeste versjon:     {latest_version}");
+    crate::emit(&format!("Installert versjon: {CURRENT}\nNyeste versjon:     {latest_version}\n"))?;
 
     if !is_newer(latest_version, CURRENT) {
-        println!("\nDu har allerede nyeste versjon.");
-        return Ok(());
+        return crate::emit("\nDu har allerede nyeste versjon.\n");
     }
 
     if check_only {
-        println!("\nNy versjon tilgjengelig. Oppgrader med `ruter upgrade`.");
-        return Ok(());
+        return crate::emit("\nNy versjon tilgjengelig. Oppgrader med `ruter upgrade`.\n");
     }
 
-    println!("\n==> Oppgraderer til {latest_version}");
+    crate::emit(&format!("\n==> Oppgraderer til {latest_version}\n"))?;
     install(&latest)?;
-    warn_if_shadowed();
-    Ok(())
+    warn_if_shadowed()
 }
 
 /// The install script always writes under `$HOME`. If the binary being replaced came from
 /// somewhere else — Homebrew, `cargo install`, `/usr/local/bin` — the upgrade succeeds and
 /// still leaves the old version on PATH, which otherwise looks like nothing happened.
-fn warn_if_shadowed() {
+fn warn_if_shadowed() -> Result<()> {
     let bin_dir = std::env::var_os("RUTER_BIN_DIR")
         .map(std::path::PathBuf::from)
         .or_else(|| dirs::home_dir().map(|h| h.join(".local/bin")));
 
-    let (Some(bin_dir), Ok(running)) = (bin_dir, std::env::current_exe()) else { return };
+    let (Some(bin_dir), Ok(running)) = (bin_dir, std::env::current_exe()) else { return Ok(()) };
 
     let resolve = |p: std::path::PathBuf| std::fs::canonicalize(p).ok();
     let (Some(installed), Some(running)) = (resolve(bin_dir.join("ruter")), resolve(running))
     else {
-        return;
+        return Ok(());
     };
 
     if installed != running {
-        println!(
+        return crate::emit(&format!(
             "\nOBS: du kjørte {}, men den nye versjonen ble installert i {}.\n\
-             Fjern den gamle, eller sørg for at den nye kommer først i PATH.",
+             Fjern den gamle, eller sørg for at den nye kommer først i PATH.\n",
             running.display(),
             installed.display()
-        );
+        ));
     }
+    Ok(())
 }
 
 /// Ask GitHub which tag `releases/latest` points at.
