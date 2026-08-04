@@ -27,8 +27,12 @@ ureq = { version = "3.3", features = ["json"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-core-location = { version = "0.3", features = ["CLLocation", "CLLocationManager"] }
-objc2-foundation = { version = "0.3", features = ["NSDate", "NSRunLoop"] }
+objc2-core-location = { version = "0.3", features = [
+    "CLLocation",
+    "CLLocationManager",
+    "CLLocationManagerDelegate",
+] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSDate", "NSRunLoop"] }
 
 [profile.release]
 lto = true

@@ -167,8 +167,9 @@ Bundlet er ikke en GUI-app — det er bare mappestrukturen macOS krever for å k
 identitet. Symlenken funker fint; `ruter` oppfører seg som en helt vanlig kommando.
 
 Etter installasjon dukker «ruter» opp under *Systeminnstillinger → Personvern og sikkerhet →
-Stedstjenester*. Uten GPS venter `ruter` i fire sekunder før den faller tilbake til IP; `--no-gps`
-hopper over forsøket.
+Stedstjenester*. Uten GPS venter `ruter` i ti sekunder før den faller tilbake til IP; `--no-gps`
+hopper over forsøket. Er tilgangen allerede avslått, gir `ruter` opp med én gang i stedet for å
+vente ut tidsavbruddet.
 
 **IP-oppslag er grovt.** På én maskin ga IP-oppslaget Stortorvet mens GPS ga en adresse 5 km
 unna, altså helt andre holdeplasser. To ulike IP-tjenester ga dessuten svar som lå 55 km fra
