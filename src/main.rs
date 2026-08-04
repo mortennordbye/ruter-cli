@@ -347,17 +347,17 @@ fn cmd_where(client: &Client, config: &Config, common: &Common, style: Style) ->
 
     let mut out = String::from("\n");
     for (key, value) in location::gps_diagnostics() {
-        out.push_str(&format!("  {:<22} {value}\n", format!("{key}:")));
+        out.push_str(&format!("  {:<28} {value}\n", format!("{key}:")));
     }
 
     match resolved {
         Ok(origin) => {
-            out.push_str(&format!("  {:<22} {}\n", "Posisjon:", style.bold(&origin.name)));
+            out.push_str(&format!("  {:<28} {}\n", "Posisjon:", style.bold(&origin.name)));
             out.push_str(&format!(
-                "  {:<22} {:.5}, {:.5}\n",
+                "  {:<28} {:.5}, {:.5}\n",
                 "Koordinater:", origin.coord.lat, origin.coord.lon
             ));
-            out.push_str(&format!("  {:<22} {}\n", "Kilde:", origin.source.label()));
+            out.push_str(&format!("  {:<28} {}\n", "Kilde:", origin.source.label()));
             if origin.source.is_coarse() {
                 out.push_str(&format!(
                     "\n  {}\n",
@@ -367,7 +367,7 @@ fn cmd_where(client: &Client, config: &Config, common: &Common, style: Style) ->
                 ));
             }
         }
-        Err(e) => out.push_str(&format!("  {:<22} {e:#}\n", "Posisjon:")),
+        Err(e) => out.push_str(&format!("  {:<28} {e:#}\n", "Posisjon:")),
     }
     out.push('\n');
     emit(&out)

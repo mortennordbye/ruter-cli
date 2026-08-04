@@ -32,7 +32,12 @@ objc2-core-location = { version = "0.3", features = [
     "CLLocationManager",
     "CLLocationManagerDelegate",
 ] }
-objc2-foundation = { version = "0.3", features = ["NSArray", "NSDate", "NSRunLoop"] }
+objc2-foundation = { version = "0.3", features = [
+    "NSArray",
+    "NSDate",
+    "NSError",
+    "NSRunLoop",
+] }
 
 [profile.release]
 lto = true

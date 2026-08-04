@@ -175,7 +175,9 @@ use objc2_core_location::{
     CLAuthorizationStatus, CLLocation, CLLocationManager, CLLocationManagerDelegate,
 };
 #[cfg(target_os = "macos")]
-use objc2_foundation::{NSArray, NSDate, NSRunLoop};
+use objc2_foundation::{NSArray, NSDate, NSError, NSRunLoop};
+#[cfg(target_os = "macos")]
+use std::sync::atomic::Ordering;
 
 /// Authorization status as observed during the last real GPS attempt.
 ///
@@ -194,6 +196,54 @@ static LAST_AUTH_STATUS: std::sync::atomic::AtomicI32 = std::sync::atomic::Atomi
 /// is why the lock is matched on rather than unwrapped.
 #[cfg(target_os = "macos")]
 static FIX: std::sync::Mutex<Option<Coord>> = std::sync::Mutex::new(None);
+
+/// `NSError.code` from `didFailWithError`, or `i64::MIN` for "nothing reported".
+///
+/// Core Location otherwise fails in silence: without this the only signal was the
+/// wait expiring, which looks the same whether the user is indoors, offline or
+/// unauthorised.
+#[cfg(target_os = "macos")]
+static FAIL_CODE: std::sync::atomic::AtomicI64 =
+    std::sync::atomic::AtomicI64::new(i64::MIN);
+
+/// Whether macOS put the permission dialog on screen during this attempt.
+#[cfg(target_os = "macos")]
+static PROMPTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A sentence describing how the last GPS attempt ended, for `ruter where`.
+#[cfg(target_os = "macos")]
+static LAST_ATTEMPT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+#[cfg(target_os = "macos")]
+fn record_attempt(what: impl Into<String>) {
+    if let Ok(mut slot) = LAST_ATTEMPT.lock() {
+        *slot = Some(what.into());
+    }
+}
+
+/// Core Location delivers on the run loop, so it has to be pumped for any
+/// delegate callback to arrive at all.
+#[cfg(target_os = "macos")]
+fn pump_run_loop(seconds: f64) {
+    // SAFETY: pumping the calling thread's own run loop.
+    unsafe {
+        let until = NSDate::dateWithTimeIntervalSinceNow(seconds);
+        NSRunLoop::currentRunLoop().runUntilDate(&until);
+    }
+}
+
+/// Translate the `CLError` codes a user can actually act on.
+#[cfg(target_os = "macos")]
+fn cl_error_text(code: i64) -> String {
+    match code {
+        0 => "fant ingen posisjon (kCLErrorLocationUnknown). Vanlig innend\u{f8}rs, \
+              uten Wi-Fi, eller rett etter oppstart"
+            .to_string(),
+        1 => "tilgang avsl\u{e5}tt (kCLErrorDenied)".to_string(),
+        2 => "nettverksfeil (kCLErrorNetwork)".to_string(),
+        other => format!("Core Location-feil {other}"),
+    }
+}
 
 // A delegate is not optional, which is what the old polling loop got wrong.
 //
@@ -227,32 +277,45 @@ define_class!(
                 *slot = Some(Coord { lat: c.latitude, lon: c.longitude });
             }
         }
+
+        #[unsafe(method(locationManager:didFailWithError:))]
+        fn did_fail_with_error(&self, _manager: &CLLocationManager, error: &NSError) {
+            FAIL_CODE.store(error.code() as i64, Ordering::Relaxed);
+        }
+
+        #[unsafe(method(locationManagerDidChangeAuthorization:))]
+        fn did_change_authorization(&self, manager: &CLLocationManager) {
+            // SAFETY: reading a property off the manager Core Location passed us.
+            let status = unsafe { manager.authorizationStatus() };
+            LAST_AUTH_STATUS.store(status.0, Ordering::Relaxed);
+        }
     }
 );
 
 /// `Ok(None)` means "no fix within the timeout" rather than a hard failure.
 #[cfg(target_os = "macos")]
 fn gps() -> Result<Option<Coord>> {
-    use std::sync::atomic::Ordering;
     use std::time::{Duration, Instant};
 
     // A cold fix goes out to Wi-Fi positioning and routinely takes longer than
     // the four seconds this allowed before.
-    const TIMEOUT: Duration = Duration::from_secs(10);
+    const FIX_TIMEOUT: Duration = Duration::from_secs(10);
+    // Time to read a dialog and click Allow. This clock is deliberately separate
+    // from the one above: the seconds the user spends deciding must not eat into
+    // the seconds Core Location gets to answer.
+    const PROMPT_TIMEOUT: Duration = Duration::from_secs(60);
 
     unsafe {
-        // Deliberately not calling `locationServicesEnabled()`: Apple deprecated
-        // it because it can block the calling thread, and the timeout below
-        // covers the "services are off" case with the same message anyway.
         let manager = CLLocationManager::new();
 
         // Fail fast when permission has already been refused, rather than
         // making the user wait out the timeout on every single invocation.
-        match manager.authorizationStatus() {
-            CLAuthorizationStatus::Denied | CLAuthorizationStatus::Restricted => {
-                bail!("{}", permission_hint())
-            }
-            _ => {}
+        if matches!(
+            manager.authorizationStatus(),
+            CLAuthorizationStatus::Denied | CLAuthorizationStatus::Restricted
+        ) {
+            record_attempt("tilgang til stedstjenester er avsl\u{e5}tt for ruter");
+            bail!("{}", permission_hint())
         }
 
         let delegate: Retained<LocationDelegate> = msg_send![LocationDelegate::alloc(), init];
@@ -263,17 +326,46 @@ fn gps() -> Result<Option<Coord>> {
         // takes far longer to first fix than choosing a nearby stop warrants.
         manager.setDesiredAccuracy(100.0);
 
-        manager.requestWhenInUseAuthorization();
-        manager.startUpdatingLocation();
+        // Settle authorization *before* asking for a position.
+        // `requestWhenInUseAuthorization` is asynchronous, so calling
+        // `startUpdatingLocation` straight after it starts nothing at all while
+        // the dialog is still on screen: the user clicks Allow, and the wait then
+        // expires anyway on a machine that has just granted access.
+        if matches!(manager.authorizationStatus(), CLAuthorizationStatus::NotDetermined) {
+            PROMPTED.store(true, Ordering::Relaxed);
+            manager.requestWhenInUseAuthorization();
+
+            let asked = Instant::now();
+            while asked.elapsed() < PROMPT_TIMEOUT
+                && matches!(manager.authorizationStatus(), CLAuthorizationStatus::NotDetermined)
+            {
+                pump_run_loop(0.1);
+            }
+        }
         LAST_AUTH_STATUS.store(manager.authorizationStatus().0, Ordering::Relaxed);
 
-        // Core Location delivers on the run loop, so it has to be pumped for the
-        // delegate to be called at all.
+        match manager.authorizationStatus() {
+            CLAuthorizationStatus::Denied | CLAuthorizationStatus::Restricted => {
+                record_attempt("du avslo tilgangsdialogen");
+                bail!("{}", permission_hint())
+            }
+            CLAuthorizationStatus::NotDetermined => {
+                record_attempt("tilgangsdialogen ble ikke besvart");
+                bail!(
+                    "ingen svar p\u{e5} tilgangsdialogen. Kj\u{f8}r kommandoen p\u{e5} nytt, \
+                     eller bruk `--no-gps`."
+                )
+            }
+            _ => {}
+        }
+
+        manager.startUpdatingLocation();
+
         let started = Instant::now();
         let mut found = None;
-        while started.elapsed() < TIMEOUT {
-            let until = NSDate::dateWithTimeIntervalSinceNow(0.1);
-            NSRunLoop::currentRunLoop().runUntilDate(&until);
+        let mut from_cache = false;
+        while started.elapsed() < FIX_TIMEOUT {
+            pump_run_loop(0.1);
 
             if let Ok(slot) = FIX.lock()
                 && let Some(coord) = *slot
@@ -287,6 +379,13 @@ fn gps() -> Result<Option<Coord>> {
             if let Some(location) = manager.location() {
                 let c = location.coordinate();
                 found = Some(Coord { lat: c.latitude, lon: c.longitude });
+                from_cache = true;
+                break;
+            }
+
+            // kCLErrorDenied is terminal; kCLErrorLocationUnknown is not, and
+            // Apple's guidance is to keep waiting through it.
+            if FAIL_CODE.load(Ordering::Relaxed) == 1 {
                 break;
             }
         }
@@ -294,21 +393,34 @@ fn gps() -> Result<Option<Coord>> {
         manager.setDelegate(None);
         LAST_AUTH_STATUS.store(manager.authorizationStatus().0, Ordering::Relaxed);
 
-        if found.is_none() {
-            // Only send the user to System Settings when that is actually the
-            // problem. Telling an already-authorised user to reinstall is what
-            // made this bug look like a permissions failure for so long.
-            match manager.authorizationStatus() {
-                CLAuthorizationStatus::AuthorizedAlways
-                | CLAuthorizationStatus::AuthorizedWhenInUse => bail!(
-                    "Core Location svarte ikke innen {} sekunder. \
-                     Bruk `--no-gps` for \u{e5} hoppe over GPS.",
-                    TIMEOUT.as_secs()
-                ),
-                _ => bail!("tidsavbrudd. {}", permission_hint()),
-            }
+        if found.is_some() {
+            record_attempt(if from_cache {
+                "fikk posisjon fra systemets mellomlagrede m\u{e5}ling"
+            } else {
+                "fikk posisjon fra Core Location"
+            });
+            return Ok(found);
         }
-        Ok(found)
+
+        // Report what Core Location actually said, rather than sending an
+        // already-authorised user off to System Settings. That wrong advice is
+        // what made this look like a permissions problem for so long.
+        let reported = FAIL_CODE.load(Ordering::Relaxed);
+        if reported != i64::MIN {
+            let text = cl_error_text(reported);
+            record_attempt(text.clone());
+            bail!("{text}. Bruk `--no-gps` for \u{e5} hoppe over GPS.");
+        }
+
+        record_attempt(format!(
+            "tidsavbrudd etter {} sekunder uten svar fra Core Location",
+            FIX_TIMEOUT.as_secs()
+        ));
+        bail!(
+            "Core Location svarte ikke innen {} sekunder. Se `ruter where` for hva som \
+             kan blokkere. Bruk `--no-gps` for \u{e5} hoppe over GPS.",
+            FIX_TIMEOUT.as_secs()
+        )
     }
 }
 
@@ -335,8 +447,6 @@ fn permission_hint() -> String {
 /// reports "not determined" even on a machine where GPS works fine.
 #[cfg(target_os = "macos")]
 pub fn gps_diagnostics() -> Vec<(String, String)> {
-    use std::sync::atomic::Ordering;
-
     let raw = match LAST_AUTH_STATUS.load(Ordering::Relaxed) {
         -1 => unsafe { CLLocationManager::new().authorizationStatus().0 },
         observed => observed,
@@ -360,8 +470,25 @@ pub fn gps_diagnostics() -> Vec<(String, String)> {
         .map(|p| p.to_string_lossy().contains(".app/Contents/MacOS/"))
         .unwrap_or(false);
 
-    vec![
-        ("Stedstjenester".to_string(), status_text.to_string()),
+    // Deprecated because it can block the calling thread. That is a real problem
+    // on the trip path and not one here: `ruter where` exists to answer exactly
+    // this question, and services being switched off machine-wide is the one
+    // blocker no per-app status can reveal.
+    #[allow(deprecated)]
+    let services_on = unsafe { CLLocationManager::locationServicesEnabled_class() };
+
+    let mut rows = vec![
+        (
+            "Stedstjenester på maskinen".to_string(),
+            if services_on {
+                "på".to_string()
+            } else {
+                "AV \u{2014} slå på under Systeminnstillinger > Personvern og sikkerhet > \
+                 Stedstjenester. Ingenting annet her hjelper før den står på"
+                    .to_string()
+            },
+        ),
+        ("Tilgang for ruter".to_string(), status_text.to_string()),
         (
             "Kjører som app-bundle".to_string(),
             if bundled {
@@ -371,7 +498,24 @@ pub fn gps_diagnostics() -> Vec<(String, String)> {
                     .to_string()
             },
         ),
-    ]
+    ];
+
+    if let Ok(slot) = LAST_ATTEMPT.lock()
+        && let Some(outcome) = slot.as_deref()
+    {
+        rows.push(("Siste GPS-forsøk".to_string(), outcome.to_string()));
+    }
+
+    if PROMPTED.load(Ordering::Relaxed) {
+        rows.push((
+            "Merk".to_string(),
+            "macOS spurte om tilgang under dette fors\u{f8}ket. Er den nå innvilget, \
+             finner neste kj\u{f8}ring posisjonen uten \u{e5} spørre."
+                .to_string(),
+        ));
+    }
+
+    rows
 }
 
 #[cfg(not(target_os = "macos"))]
