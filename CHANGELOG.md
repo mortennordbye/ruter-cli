@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/mortennordbye/ruter-cli/compare/v0.3.0...v0.4.0) (2026-08-04)
+
+
+### Features
+
+* **route:** save journeys that travel via specific stops ([#11](https://github.com/mortennordbye/ruter-cli/issues/11)) ([7e3e2ab](https://github.com/mortennordbye/ruter-cli/commit/7e3e2aba2959c6149ce5c8690d447bf4dd744b86))
+
+
+### Bug Fixes
+
+* **location:** drive Core Location with a delegate so GPS stops falling back to IP ([#12](https://github.com/mortennordbye/ruter-cli/issues/12)) ([3a50440](https://github.com/mortennordbye/ruter-cli/commit/3a50440679c4f8d7922c1b4eb873ff5eeb3fc7ee))
+* **upgrade:** close the installer's stdin so the upgrade can finish ([#9](https://github.com/mortennordbye/ruter-cli/issues/9)) ([c2fb65c](https://github.com/mortennordbye/ruter-cli/commit/c2fb65cb85d1cb21883c8bdef5001344128da799))
+
 ## [0.3.0](https://github.com/mortennordbye/ruter-cli/compare/v0.2.1...v0.3.0) (2026-07-31)
 
 
