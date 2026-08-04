@@ -130,7 +130,8 @@ where
     let (cmd_tx, cmd_rx) = channel::<Cmd>();
     let (data_tx, data_rx) = channel::<Result<T>>();
 
-    let handle = std::thread::spawn(move || poller(fetch, cmd_rx, data_tx, interval));
+    let handle =
+        std::thread::spawn(move || poller(fetch, cmd_rx, data_tx, interval, MANUAL_REFRESH_FLOOR));
 
     // ratatui::run installs a panic hook and restores the terminal on the way
     // out, so a panic here cannot leave the shell in raw mode.
@@ -171,19 +172,48 @@ where
     result
 }
 
-/// `recv_timeout` gives us scheduled polling and instant manual refresh from a
+/// The soonest a manual `r` can trigger a fetch after the previous one.
+///
+/// Terminal key auto-repeat turns a held `r` into a stream of `RefreshNow`, and
+/// every one of them used to mean another immediate request against a free public
+/// API. Short enough that a deliberate press still feels instant.
+const MANUAL_REFRESH_FLOOR: Duration = Duration::from_secs(3);
+
+/// `recv_timeout` gives us scheduled polling and prompt manual refresh from a
 /// single primitive, with no condvar and no busy-waiting.
-fn poller<T, F>(fetch: F, cmd_rx: Receiver<Cmd>, data_tx: Sender<Result<T>>, interval: Duration)
-where
+///
+/// A manual refresh inside `floor` is not dropped, it is *deferred*: pressing `r`
+/// twice in a second still refreshes, once, as soon as the floor lets it. Dropping
+/// it instead would make the key look broken; honouring each one would let a held
+/// key burst.
+fn poller<T, F>(
+    fetch: F,
+    cmd_rx: Receiver<Cmd>,
+    data_tx: Sender<Result<T>>,
+    interval: Duration,
+    floor: Duration,
+) where
     F: Fn() -> Result<T>,
 {
     loop {
         if data_tx.send(fetch()).is_err() {
             return; // UI has gone away
         }
-        match cmd_rx.recv_timeout(interval) {
-            Err(RecvTimeoutError::Timeout) | Ok(Cmd::RefreshNow) => continue,
-            Ok(Cmd::Quit) | Err(RecvTimeoutError::Disconnected) => return,
+        let fetched_at = Instant::now();
+        let mut requested = false;
+
+        loop {
+            // Whichever comes first: the floor expiring on a refresh someone has
+            // already asked for, or the next scheduled poll.
+            let due = if requested { floor } else { interval };
+            let Some(wait) = due.checked_sub(fetched_at.elapsed()) else { break };
+
+            match cmd_rx.recv_timeout(wait) {
+                Err(RecvTimeoutError::Timeout) => break,
+                // Coalesces: twenty queued presses set one flag.
+                Ok(Cmd::RefreshNow) => requested = true,
+                Ok(Cmd::Quit) | Err(RecvTimeoutError::Disconnected) => return,
+            }
         }
     }
 }
@@ -553,5 +583,99 @@ mod tests {
     fn empty_results_still_render_a_row() {
         assert_eq!(trip_lines(&[], now(), "A", "B").len(), 1);
         assert_eq!(near_lines(&[], now()).len(), 1);
+    }
+    // The refresh key talks to a free public API, so these pin the rate it can be
+    // driven at. A short floor is passed in rather than the shipped three seconds
+    // so the suite stays fast.
+    mod refresh {
+        use super::super::*;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        const FLOOR: Duration = Duration::from_millis(150);
+        /// Long enough that no scheduled poll can be mistaken for a manual one.
+        const NEVER: Duration = Duration::from_secs(3600);
+
+        struct Harness {
+            calls: Arc<AtomicUsize>,
+            cmd_tx: Sender<Cmd>,
+            data_rx: Receiver<Result<u32>>,
+            handle: Option<std::thread::JoinHandle<()>>,
+        }
+
+        impl Harness {
+            fn start(interval: Duration) -> Self {
+                let calls = Arc::new(AtomicUsize::new(0));
+                let counter = calls.clone();
+                let (cmd_tx, cmd_rx) = channel::<Cmd>();
+                let (data_tx, data_rx) = channel::<Result<u32>>();
+
+                let handle = std::thread::spawn(move || {
+                    poller(
+                        move || Ok(counter.fetch_add(1, Ordering::SeqCst) as u32),
+                        cmd_rx,
+                        data_tx,
+                        interval,
+                        FLOOR,
+                    )
+                });
+                Harness { calls, cmd_tx, data_rx, handle: Some(handle) }
+            }
+
+            fn await_fetch(&self, within: Duration) -> bool {
+                self.data_rx.recv_timeout(within).is_ok()
+            }
+        }
+
+        impl Drop for Harness {
+            fn drop(&mut self) {
+                let _ = self.cmd_tx.send(Cmd::Quit);
+                if let Some(h) = self.handle.take() {
+                    let _ = h.join();
+                }
+            }
+        }
+
+        #[test]
+        fn a_held_key_produces_one_refetch_not_twenty() {
+            let h = Harness::start(NEVER);
+            assert!(h.await_fetch(Duration::from_secs(5)), "expected the initial fetch");
+
+            // What terminal auto-repeat delivers.
+            for _ in 0..20 {
+                h.cmd_tx.send(Cmd::RefreshNow).unwrap();
+            }
+
+            assert!(h.await_fetch(Duration::from_secs(5)), "the burst should still refresh once");
+            assert!(
+                !h.await_fetch(FLOOR * 4),
+                "a held key hit the network more than once per floor"
+            );
+            assert_eq!(
+                h.calls.load(Ordering::SeqCst),
+                2,
+                "expected the initial fetch plus exactly one coalesced refresh"
+            );
+        }
+
+        #[test]
+        fn a_refresh_inside_the_floor_is_deferred_not_dropped() {
+            let h = Harness::start(NEVER);
+            assert!(h.await_fetch(Duration::from_secs(5)), "expected the initial fetch");
+
+            // Immediately after a fetch, so it lands well inside the floor.
+            h.cmd_tx.send(Cmd::RefreshNow).unwrap();
+
+            // Dropping it would make `r` look broken; it must still arrive.
+            assert!(h.await_fetch(Duration::from_secs(5)), "a single early press was swallowed");
+            assert_eq!(h.calls.load(Ordering::SeqCst), 2);
+        }
+
+        #[test]
+        fn the_scheduled_poll_still_fires_without_any_key() {
+            let h = Harness::start(FLOOR);
+            assert!(h.await_fetch(Duration::from_secs(5)), "expected the initial fetch");
+            assert!(h.await_fetch(Duration::from_secs(5)), "the interval poll stopped happening");
+        }
     }
 }
