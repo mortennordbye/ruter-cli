@@ -169,7 +169,12 @@ identitet. Symlenken funker fint; `ruter` oppfører seg som en helt vanlig komma
 Etter installasjon dukker «ruter» opp under *Systeminnstillinger → Personvern og sikkerhet →
 Stedstjenester*. Uten GPS venter `ruter` i ti sekunder før den faller tilbake til IP; `--no-gps`
 hopper over forsøket. Er tilgangen allerede avslått, gir `ruter` opp med én gang i stedet for å
-vente ut tidsavbruddet.
+vente ut tidsavbruddet. Første gang dukker tilgangsdialogen opp, og da venter `ruter` i opptil
+ett minutt på svar — de sekundene teller ikke mot tidsavbruddet på selve posisjonen.
+
+Går GPS likevel ikke gjennom, viser `ruter where` hva som blokkerer: om stedstjenester i det hele
+tatt er på, hvilken tilgang `ruter` har, om den kjører som app-bundle, og hva Core Location svarte
+sist.
 
 **IP-oppslag er grovt.** På én maskin ga IP-oppslaget Stortorvet mens GPS ga en adresse 5 km
 unna, altså helt andre holdeplasser. To ulike IP-tjenester ga dessuten svar som lå 55 km fra
