@@ -17,6 +17,20 @@ Norge. Navnet kommer av at det er skrevet for daglig bruk i Oslo, der Ruter er o
 
 ---
 
+## Installer
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mortennordbye/ruter-cli/main/scripts/install.sh | sh
+```
+
+```sh
+ruter config add hjem "Dronningens gate 40, Oslo"
+ruter hjem
+```
+
+Skriptet legger `~/.local/bin` i PATH hvis den mangler, så `ruter` virker i nye
+terminalvinduer uten at du trenger å rydde i profilfilen selv.
+
 ```
   Storo, Oslo  →  Dronningens gate 40, Oslo                          11:59
   ════════════════════════════════════════════════════════════════════════
@@ -34,19 +48,20 @@ Norge. Navnet kommer av at det er skrevet for daglig bruk i Oslo, der Ruter er o
 
 ## Kom i gang
 
-### Installer
+### Hva installasjonsskriptet gjør
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/mortennordbye/ruter-cli/main/scripts/install.sh | sh
-```
+Finner siste release, laster ned riktig binærfil for maskinen din, sjekker sjekksummen
+og installerer til `~/.local/bin/ruter`. macOS får i tillegg `Ruter.app` i `~/Applications`,
+fordi det er det som gir verktøyet egen tilgang til stedstjenester — se forklaringen under.
 
-Skriptet finner siste release, laster ned riktig binærfil for maskinen din, sjekker
-sjekksummen og installerer til `~/.local/bin/ruter`. macOS får i tillegg `Ruter.app`
-i `~/Applications`, fordi det er det som gir verktøyet egen tilgang til stedstjenester
-— se forklaringen under.
+Ligger ikke `~/.local/bin` i PATH fra før, legges den til i profilfilen for skallet ditt
+(`.zshrc`, `.bashrc`/`.bash_profile`, ellers `.profile`). Det skjer bare når katalogen
+faktisk mangler, så gjentatte oppgraderinger ikke fyller opp fila. Bruker du fish, får du
+`fish_add_path`-kommandoen i stedet. Endringen gjelder nye terminalvinduer — skriptet kjører
+i et underskall og kan ikke endre PATH i det du står i.
 
 Miljøvariabler hvis du vil styre hvor ting havner: `RUTER_BIN_DIR`, `RUTER_APP_DIR`,
-og `RUTER_VERSION` for å pinne en bestemt tag.
+`RUTER_VERSION` for å pinne en bestemt tag, og `RUTER_NO_PATH=1` for å la profilfilen være.
 
 ### Oppgrader
 
@@ -78,15 +93,15 @@ laster du ned via nettleser setter den karanteneflagget, og `install.sh` fjerner
 cargo install --path .              # Linux, eller hvis du ikke trenger GPS
 ```
 
-### Så
-
-```sh
-ruter config add hjem "Dronningens gate 40, Oslo"
-ruter hjem
-```
+### Lagre stedene dine
 
 `config add` slår opp adressen i Entur sin geokoder og lagrer koordinatene, så du slipper å
 skrive inn lengde- og breddegrad selv.
+
+```sh
+ruter config add hjem "Dronningens gate 40, Oslo"
+ruter config add jobb Brekkelia 3D          # anførselstegn er valgfritt
+```
 
 ## Bruk
 
