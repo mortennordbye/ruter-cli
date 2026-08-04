@@ -164,6 +164,19 @@ fn ip_location(client: &Client) -> Result<Coord> {
 // GPS
 // ---------------------------------------------------------------------------
 
+#[cfg(target_os = "macos")]
+use objc2::rc::Retained;
+#[cfg(target_os = "macos")]
+use objc2::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
+#[cfg(target_os = "macos")]
+use objc2::{AnyThread, define_class, msg_send};
+#[cfg(target_os = "macos")]
+use objc2_core_location::{
+    CLAuthorizationStatus, CLLocation, CLLocationManager, CLLocationManagerDelegate,
+};
+#[cfg(target_os = "macos")]
+use objc2_foundation::{NSArray, NSDate, NSRunLoop};
+
 /// Authorization status as observed during the last real GPS attempt.
 ///
 /// A freshly constructed `CLLocationManager` reports `NotDetermined` until
@@ -173,15 +186,59 @@ fn ip_location(client: &Client) -> Result<Coord> {
 #[cfg(target_os = "macos")]
 static LAST_AUTH_STATUS: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
 
+/// Where the delegate leaves the fix for `gps()` to collect.
+///
+/// A static rather than a `define_class!` ivar because `gps()` runs at most once
+/// per process, so there is no per-instance state to carry. Nothing here may
+/// panic: unwinding out of an Objective-C callback is undefined behaviour, which
+/// is why the lock is matched on rather than unwrapped.
+#[cfg(target_os = "macos")]
+static FIX: std::sync::Mutex<Option<Coord>> = std::sync::Mutex::new(None);
+
+// A delegate is not optional, which is what the old polling loop got wrong.
+//
+// `CLLocationManager` only ever *pushes* fixes, through
+// `locationManager:didUpdateLocations:`. Its `location` property is not a live
+// reading — it is whatever the system already had cached. Polling that property
+// alone therefore succeeds exactly when something else on the machine has used
+// location services recently, and times out into the IP fallback otherwise.
+//
+// Plain comments rather than doc comments: rustdoc does not document macro
+// invocations, and `///` here is a hard error under `-D warnings`.
+#[cfg(target_os = "macos")]
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "RuterLocationDelegate"]
+    struct LocationDelegate;
+
+    unsafe impl NSObjectProtocol for LocationDelegate {}
+
+    unsafe impl CLLocationManagerDelegate for LocationDelegate {
+        #[unsafe(method(locationManager:didUpdateLocations:))]
+        fn did_update_locations(
+            &self,
+            _manager: &CLLocationManager,
+            locations: &NSArray<CLLocation>,
+        ) {
+            let Some(location) = locations.lastObject() else { return };
+            // SAFETY: reading the coordinate off a location Core Location just gave us.
+            let c = unsafe { location.coordinate() };
+            if let Ok(mut slot) = FIX.lock() {
+                *slot = Some(Coord { lat: c.latitude, lon: c.longitude });
+            }
+        }
+    }
+);
+
 /// `Ok(None)` means "no fix within the timeout" rather than a hard failure.
 #[cfg(target_os = "macos")]
 fn gps() -> Result<Option<Coord>> {
-    use objc2_core_location::{CLAuthorizationStatus, CLLocationManager};
-    use objc2_foundation::{NSDate, NSRunLoop};
     use std::sync::atomic::Ordering;
     use std::time::{Duration, Instant};
 
-    const TIMEOUT: Duration = Duration::from_secs(4);
+    // A cold fix goes out to Wi-Fi positioning and routinely takes longer than
+    // the four seconds this allowed before.
+    const TIMEOUT: Duration = Duration::from_secs(10);
 
     unsafe {
         // Deliberately not calling `locationServicesEnabled()`: Apple deprecated
@@ -198,20 +255,35 @@ fn gps() -> Result<Option<Coord>> {
             _ => {}
         }
 
+        let delegate: Retained<LocationDelegate> = msg_send![LocationDelegate::alloc(), init];
+        manager.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+
+        // 100 m is kCLLocationAccuracyHundredMeters. The default is
+        // kCLLocationAccuracyBest, which keeps refining before it reports and so
+        // takes far longer to first fix than choosing a nearby stop warrants.
+        manager.setDesiredAccuracy(100.0);
+
         manager.requestWhenInUseAuthorization();
         manager.startUpdatingLocation();
         LAST_AUTH_STATUS.store(manager.authorizationStatus().0, Ordering::Relaxed);
 
-        // No delegate: CLLocationManager publishes the most recent fix on its
-        // `location` property, so we can pump the run loop and poll it. That
-        // avoids declaring an Objective-C delegate class entirely, which is by
-        // far the fiddliest part of talking to CoreLocation from Rust.
+        // Core Location delivers on the run loop, so it has to be pumped for the
+        // delegate to be called at all.
         let started = Instant::now();
         let mut found = None;
         while started.elapsed() < TIMEOUT {
             let until = NSDate::dateWithTimeIntervalSinceNow(0.1);
             NSRunLoop::currentRunLoop().runUntilDate(&until);
 
+            if let Ok(slot) = FIX.lock()
+                && let Some(coord) = *slot
+            {
+                found = Some(coord);
+                break;
+            }
+
+            // The cached property still short-circuits the wait when the system
+            // happens to have a recent fix already.
             if let Some(location) = manager.location() {
                 let c = location.coordinate();
                 found = Some(Coord { lat: c.latitude, lon: c.longitude });
@@ -219,10 +291,22 @@ fn gps() -> Result<Option<Coord>> {
             }
         }
         manager.stopUpdatingLocation();
+        manager.setDelegate(None);
         LAST_AUTH_STATUS.store(manager.authorizationStatus().0, Ordering::Relaxed);
 
         if found.is_none() {
-            bail!("tidsavbrudd. {}", permission_hint());
+            // Only send the user to System Settings when that is actually the
+            // problem. Telling an already-authorised user to reinstall is what
+            // made this bug look like a permissions failure for so long.
+            match manager.authorizationStatus() {
+                CLAuthorizationStatus::AuthorizedAlways
+                | CLAuthorizationStatus::AuthorizedWhenInUse => bail!(
+                    "Core Location svarte ikke innen {} sekunder. \
+                     Bruk `--no-gps` for \u{e5} hoppe over GPS.",
+                    TIMEOUT.as_secs()
+                ),
+                _ => bail!("tidsavbrudd. {}", permission_hint()),
+            }
         }
         Ok(found)
     }
@@ -251,7 +335,6 @@ fn permission_hint() -> String {
 /// reports "not determined" even on a machine where GPS works fine.
 #[cfg(target_os = "macos")]
 pub fn gps_diagnostics() -> Vec<(String, String)> {
-    use objc2_core_location::{CLAuthorizationStatus, CLLocationManager};
     use std::sync::atomic::Ordering;
 
     let raw = match LAST_AUTH_STATUS.load(Ordering::Relaxed) {
