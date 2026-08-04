@@ -34,16 +34,23 @@ terminalvinduer uten at du trenger å rydde i profilfilen selv.
 ```
   Storo, Oslo  →  Dronningens gate 40, Oslo                          11:59
   ════════════════════════════════════════════════════════════════════════
-  ● om 3 min     12:02 → 12:20   18 min   direkte
-      ↳ gå 1 min                                       → Storo
-      [18 ] trikk  Storo spor A            12:03 ●     → Jernbanetorget
-      ↳ gå 1 min                                       → Dronningens gate 40, Oslo
+  ● om 3 min     12:02 → 12:20   18 min · direkte
+      12:02     Storo, Oslo
+        ╎    gå 1 min
+      12:03     Storo spor A           ● [18 ] trikk  → Jernbanetorget
+        ╎    gå 1 min
+      12:20     Dronningens gate 40, Oslo
   ────────────────────────────────────────────────────────────────────────
-  ● om 6 min     12:05 → 12:24   19 min   direkte
-      ↳ gå 3 min                                       → Storo
-      [ 5 ] T-bane Storo spor 1            12:08 ●     → Jernbanetorget
-      ↳ gå 4 min                                       → Dronningens gate 40, Oslo
+  ● om 6 min     12:05 → 12:24   19 min · direkte
+      12:05     Storo, Oslo
+        ╎    gå 3 min
+      12:08 +2  Storo spor 1           ● [ 5 ] T-bane → Jernbanetorget
+        ╎    gå 4 min
+      12:24     Dronningens gate 40, Oslo
   ────────────────────────────────────────────────────────────────────────
+
+  ● sanntid   ○ rutetid   +2 min forsinket
+  posisjon: GPS · sanntid fra Entur
 ```
 
 ## Kom i gang

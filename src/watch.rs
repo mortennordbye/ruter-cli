@@ -10,8 +10,8 @@ use crate::entur::nearest::{NearbyStop, StopPlace};
 use crate::entur::trip::{TripPattern, TripQuery};
 use crate::location::Origin;
 use crate::render::{
-    LEG_PREFIX, RULE_WIDTH, Rgb, STOP_COLUMN, delay_marker, duration_human, hhmm, mode_label, pad,
-    place_name, relative,
+    Badge, CONNECTOR, POINT_STOP, RULE_WIDTH, Rgb, Step, delay_marker, duration_human, hhmm, pad,
+    relative, timeline,
 };
 use anyhow::Result;
 use chrono::{DateTime, FixedOffset, Local};
@@ -254,11 +254,17 @@ fn draw<T, R>(
     };
     frame.render_widget(Paragraph::new(lines), body);
 
+    // Same legend the one-shot board prints, sharing the line with the key hints.
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            "  q avslutt   r oppdater n\u{e5}",
-            TuiStyle::default().add_modifier(Modifier::DIM),
-        ))),
+        Paragraph::new(Line::from(vec![
+            dim("  q avslutt   r oppdater n\u{e5}     "),
+            realtime_span(true),
+            dim(" sanntid   "),
+            dim("\u{25cb}"),
+            dim(" rutetid   "),
+            Span::styled("+2", TuiStyle::default().fg(Color::Yellow)),
+            dim(" min forsinket"),
+        ])),
         footer,
     );
 }
@@ -373,6 +379,13 @@ fn trip_lines(
         if i > 0 {
             lines.push(rule_line());
         }
+        let transfers = p.transit_legs().count().saturating_sub(1);
+        let transfer_text = match transfers {
+            0 => "direkte".to_string(),
+            1 => "1 bytte".to_string(),
+            n => format!("{n} bytter"),
+        };
+
         lines.push(Line::from(vec![
             Span::raw("  "),
             realtime_span(p.has_realtime()),
@@ -386,47 +399,48 @@ fn trip_lines(
                 hhmm(p.expected_start_time),
                 hhmm(p.expected_end_time)
             )),
-            dim(duration_human(p.duration)),
+            dim(pad(&duration_human(p.duration), 7)),
+            dim(format!("\u{00b7} {transfer_text}")),
         ]));
 
-        for leg in &p.legs {
-            let to = place_name(leg.to_place.name.as_deref(), origin, destination).to_string();
-            if !leg.is_transit() {
-                let text =
-                    format!("\u{21b3} {} {}", mode_label(&leg.mode), duration_human(leg.duration));
-                lines.push(Line::from(vec![
-                    Span::raw("      "),
-                    dim(pad(&text, LEG_PREFIX)),
-                    dim(format!(" \u{2192} {to}")),
-                ]));
-                continue;
-            }
-
-            let line = leg.line.as_ref();
-            let badge = line
-                .and_then(|l| l.public_code.clone())
-                .unwrap_or_else(|| mode_label(&leg.mode).to_string());
-            let presentation = line.and_then(|l| l.presentation.as_ref());
-            let colour = presentation.and_then(|p| p.colour.as_deref()).and_then(Rgb::from_hex);
-            let text_colour =
-                presentation.and_then(|p| p.text_colour.as_deref()).and_then(Rgb::from_hex);
-            let from = place_name(leg.from_place.name.as_deref(), origin, destination);
-
-            lines.push(Line::from(vec![
-                Span::raw("      "),
-                Span::styled(format!(" {badge:^3} "), badge_style(colour, text_colour)),
-                Span::raw(format!(" {} ", pad(mode_label(&leg.mode), 6))),
-                dim(pad(from, STOP_COLUMN)),
-                Span::raw(format!(" {} ", hhmm(leg.expected_start_time))),
-                realtime_span(leg.realtime),
-                Span::raw(" "),
-                delay_span(leg.delay_minutes()),
-                dim(format!(" \u{2192} {to}")),
-            ]));
+        // Same rows as the one-shot board, drawn as spans instead of a string.
+        for step in timeline(p, origin, destination) {
+            lines.push(step_line(&step));
         }
     }
     lines.push(rule_line());
     lines
+}
+
+fn step_line(step: &Step) -> Line<'static> {
+    match step {
+        Step::Walk { mode, seconds } => Line::from(vec![
+            Span::raw("        "),
+            dim(CONNECTOR),
+            dim(format!("    {mode} {}", duration_human(*seconds))),
+        ]),
+
+        Step::Point { time, place, ride: None } => {
+            Line::from(vec![Span::raw("      "), Span::raw(format!("{}     {place}", hhmm(*time)))])
+        }
+
+        Step::Point { time, place, ride: Some(ride) } => Line::from(vec![
+            Span::raw("      "),
+            Span::raw(format!("{} ", hhmm(*time))),
+            delay_span(ride.delay_minutes),
+            Span::raw(" "),
+            Span::raw(pad(place, POINT_STOP)),
+            Span::raw(" "),
+            realtime_span(ride.realtime),
+            Span::raw(" "),
+            Span::styled(
+                format!(" {:^3} ", ride.badge.text),
+                badge_style(ride.badge.bg, ride.badge.fg),
+            ),
+            Span::raw(format!(" {} ", pad(&ride.mode, 6))),
+            dim(format!("\u{2192} {}", ride.to)),
+        ]),
+    }
 }
 
 /// Matches the rules the one-shot board draws, so the two views read the same.
@@ -462,20 +476,12 @@ fn near_lines(
         }
 
         for call in calls {
-            let line = call.line();
-            let badge = line
-                .and_then(|l| l.public_code.clone())
-                .or_else(|| line.and_then(|l| l.transport_mode.clone()))
-                .unwrap_or_default();
-            let presentation = line.and_then(|l| l.presentation.as_ref());
-            let colour = presentation.and_then(|p| p.colour.as_deref()).and_then(Rgb::from_hex);
-            let text_colour =
-                presentation.and_then(|p| p.text_colour.as_deref()).and_then(Rgb::from_hex);
+            let badge = Badge::for_call(call);
 
             if call.cancellation {
                 lines.push(Line::from(vec![
                     Span::raw("      "),
-                    Span::styled(format!(" {badge:^3} "), badge_style(colour, text_colour)),
+                    Span::styled(format!(" {:^3} ", badge.text), badge_style(badge.bg, badge.fg)),
                     Span::raw(format!(" {} ", pad(call.destination(), 26))),
                     Span::styled("AVLYST", TuiStyle::default().fg(Color::Red)),
                 ]));
@@ -484,7 +490,7 @@ fn near_lines(
 
             lines.push(Line::from(vec![
                 Span::raw("      "),
-                Span::styled(format!(" {badge:^3} "), badge_style(colour, text_colour)),
+                Span::styled(format!(" {:^3} ", badge.text), badge_style(badge.bg, badge.fg)),
                 Span::raw(format!(" {} ", pad(call.destination(), 26))),
                 Span::raw(format!("{} ", hhmm(call.expected_departure_time))),
                 realtime_span(call.realtime),
@@ -544,26 +550,77 @@ mod tests {
         assert!(!lines.is_empty());
     }
 
+    fn flatten(lines: &[Line<'static>]) -> Vec<String> {
+        lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+            .collect()
+    }
+
     /// The watch view cannot be eyeballed the way the one-shot board can, so the column
-    /// layout is pinned here instead: walking and transit legs must put `→` in the same
-    /// place, which is the whole point of padding them to `LEG_PREFIX`.
+    /// layout is pinned here instead. The time column is the spine of the timeline: every
+    /// point row must start it at the same offset, or the journey stops reading downward.
     #[test]
-    fn itinerary_legs_share_one_destination_column() {
+    fn the_time_column_is_a_straight_spine() {
         let resp: TripResponse =
             serde_json::from_str(include_str!("../tests/fixtures/trip.json")).unwrap();
         let lines = trip_lines(&resp.trip.trip_patterns, now(), "Storgata", "Hjemme");
 
-        let columns: Vec<usize> = lines
+        let offsets: Vec<usize> = flatten(&lines)
             .iter()
-            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
-            .filter(|text| text.starts_with("      ") && text.contains('\u{2192}'))
-            .map(|text| text.chars().take_while(|c| *c != '\u{2192}').count())
+            // Point rows only: a leading run of spaces then "HH:MM".
+            .filter(|t| {
+                let rest = t.trim_start_matches(' ');
+                rest.len() >= 5 && rest.as_bytes()[2] == b':' && rest[..2].parse::<u32>().is_ok()
+            })
+            .map(|t| t.len() - t.trim_start_matches(' ').len())
             .collect();
 
-        assert!(!columns.is_empty(), "expected itinerary legs in the fixture");
+        assert!(!offsets.is_empty(), "expected point rows in the fixture");
         assert!(
-            columns.windows(2).all(|w| w[0] == w[1]),
-            "destination arrows are not in one column: {columns:?}"
+            offsets.windows(2).all(|w| w[0] == w[1]),
+            "times are not in one column: {offsets:?}"
+        );
+    }
+
+    /// The one-shot board and the watch view draw the same `timeline`, so they must
+    /// agree row for row. Drifting apart is the failure this whole shared model exists
+    /// to prevent, and only one of the two surfaces is easy to eyeball.
+    #[test]
+    fn the_watch_view_and_the_one_shot_board_agree_row_for_row() {
+        use crate::entur::Coord;
+        use crate::location::{Origin, Source};
+        use crate::render::{Style, board};
+
+        let resp: TripResponse =
+            serde_json::from_str(include_str!("../tests/fixtures/trip.json")).unwrap();
+        let patterns = &resp.trip.trip_patterns;
+
+        let origin = Origin {
+            coord: Coord { lat: 59.9139, lon: 10.7522 },
+            name: "Storgata".to_string(),
+            source: Source::Gps,
+        };
+        let one_shot = board::trip_board(patterns, &origin, "Hjemme", now(), Style::plain());
+
+        // Compare the timeline rows: the ones carrying a time or the walk connector.
+        let interesting = |t: &str| {
+            let r = t.trim();
+            r.contains(CONNECTOR) || (r.len() >= 5 && r.as_bytes()[2] == b':')
+        };
+        let from_board: Vec<String> =
+            one_shot.lines().filter(|l| interesting(l)).map(|l| l.trim().to_string()).collect();
+        let from_watch: Vec<String> = flatten(&trip_lines(patterns, now(), "Storgata", "Hjemme"))
+            .iter()
+            .filter(|l| interesting(l))
+            .map(|l| l.trim().to_string())
+            .collect();
+
+        assert!(!from_board.is_empty(), "expected timeline rows on the board");
+        assert_eq!(
+            from_board.len(),
+            from_watch.len(),
+            "the two surfaces drew a different number of rows"
         );
     }
 
@@ -584,6 +641,7 @@ mod tests {
         assert_eq!(trip_lines(&[], now(), "A", "B").len(), 1);
         assert_eq!(near_lines(&[], now()).len(), 1);
     }
+
     // The refresh key talks to a free public API, so these pin the rate it can be
     // driven at. A short floor is passed in rather than the shipped three seconds
     // so the suite stays fast.
