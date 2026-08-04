@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.6.0](https://github.com/mortennordbye/ruter-cli/compare/v0.5.0...v0.6.0) (2026-08-04)
+
+
+### Features
+
+* **cli:** add doctor, a diagnostics report to paste into an issue ([92d9a54](https://github.com/mortennordbye/ruter-cli/commit/92d9a547da2141d04435bf06092896e87d5a46f9))
+* **cli:** reject unknown transport modes before touching the network ([92d9a54](https://github.com/mortennordbye/ruter-cli/commit/92d9a547da2141d04435bf06092896e87d5a46f9))
+* **render:** draw itineraries as a timeline and label the markers ([92d9a54](https://github.com/mortennordbye/ruter-cli/commit/92d9a547da2141d04435bf06092896e87d5a46f9))
+
+
+### Bug Fixes
+
+* **cli:** keep piped output from panicking on a closed pipe ([92d9a54](https://github.com/mortennordbye/ruter-cli/commit/92d9a547da2141d04435bf06092896e87d5a46f9))
+* **cli:** refuse --json together with --watch ([92d9a54](https://github.com/mortennordbye/ruter-cli/commit/92d9a547da2141d04435bf06092896e87d5a46f9))
+* **config:** write the config file atomically ([92d9a54](https://github.com/mortennordbye/ruter-cli/commit/92d9a547da2141d04435bf06092896e87d5a46f9))
+* **install:** drop the duplicated PATH warning on macOS ([92d9a54](https://github.com/mortennordbye/ruter-cli/commit/92d9a547da2141d04435bf06092896e87d5a46f9))
+* **watch:** coalesce manual refreshes so a held key cannot burst the API ([92d9a54](https://github.com/mortennordbye/ruter-cli/commit/92d9a547da2141d04435bf06092896e87d5a46f9))
+
+
+### Performance Improvements
+
+* **watch:** build one HTTP client per watch session ([92d9a54](https://github.com/mortennordbye/ruter-cli/commit/92d9a547da2141d04435bf06092896e87d5a46f9))
+
 ## [0.5.0](https://github.com/mortennordbye/ruter-cli/compare/v0.4.0...v0.5.0) (2026-08-04)
 
 
