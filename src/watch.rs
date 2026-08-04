@@ -76,7 +76,9 @@ pub fn run_trip(
 ) -> Result<()> {
     let (from, to) = (origin.coord, target.coord);
     let query = query.clone();
-    let client_name = client_name.to_string();
+    // Built once and moved into the poller: a fresh client per poll would throw
+    // away the connection and pay a new TLS handshake on every refresh.
+    let client = Client::new(client_name);
     let title = format!("{}  \u{2192}  {}", origin.name, target.name);
     let source = origin.source;
     let (origin_name, dest_name) = (origin.name.clone(), target.name.clone());
@@ -85,10 +87,7 @@ pub fn run_trip(
         title,
         source,
         interval_secs,
-        move || {
-            let client = Client::new(&client_name);
-            client.trip(from, to, &query)
-        },
+        move || client.trip(from, to, &query),
         move |d: &Vec<TripPattern>, now| trip_lines(d, now, &origin_name, &dest_name),
     )
 }
@@ -102,7 +101,7 @@ pub fn run_near(
     interval_secs: u64,
 ) -> Result<()> {
     let origin_owned = origin.clone();
-    let client_name = client_name.to_string();
+    let client = Client::new(client_name);
     let title = format!("Avganger n\u{e6}r {}", origin.name);
     let source = origin.source;
 
@@ -110,10 +109,7 @@ pub fn run_near(
         title,
         source,
         interval_secs,
-        move || {
-            let client = Client::new(&client_name);
-            crate::fetch_near(&client, &origin_owned, radius, stop_count, per_stop)
-        },
+        move || crate::fetch_near(&client, &origin_owned, radius, stop_count, per_stop),
         |d: &Vec<(NearbyStop, Option<StopPlace>)>, now| near_lines(d, now),
     )
 }
