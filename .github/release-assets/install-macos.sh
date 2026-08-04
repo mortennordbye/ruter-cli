@@ -24,8 +24,9 @@ xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 ln -sf "$APP/Contents/MacOS/ruter" "$BIN/ruter"
 
 echo "Installert. $BIN/ruter -> $APP/Contents/MacOS/ruter"
-if ! printf '%s' ":$PATH:" | grep -q ":$BIN:"; then
-  echo "OBS: $BIN ligger ikke i PATH."
-fi
+# No PATH check here on purpose. scripts/install.sh calls this and then runs its own
+# ensure_on_path, which does strictly more: it adds the line to the right profile file,
+# knows about fish, and honours RUTER_NO_PATH. Warning in both places printed the same
+# complaint to macOS users twice.
 echo "Kjør 'ruter where' for å sjekke at posisjonen virker."
 echo "Første gang kan macOS spørre om tilgang til stedstjenester."
