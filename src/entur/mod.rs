@@ -132,6 +132,47 @@ pub fn transport_modes_arg(modes: &[String]) -> String {
     format!("[{inner}]")
 }
 
+/// Journey Planner v3's `TransportMode` enum, as introspected from the live schema.
+///
+/// Modes go into the query as bare enum literals, so an unknown one is a schema
+/// validation error rather than an empty result.
+pub const TRANSPORT_MODES: [&str; 14] = [
+    "air",
+    "bus",
+    "cableway",
+    "coach",
+    "funicular",
+    "lift",
+    "metro",
+    "monorail",
+    "rail",
+    "taxi",
+    "tram",
+    "trolleybus",
+    "unknown",
+    "water",
+];
+
+/// Reject unknown transport modes before they reach the query.
+///
+/// Entur answers an unknown mode with a paragraph of GraphQL validation text
+/// naming `EnumValue{...}` and an argument path, which tells a user nothing. The
+/// mode names are English while the rest of the interface is Norwegian, so
+/// `--modes buss` is an easy mistake to make and deserves a real answer.
+pub fn validate_modes(modes: &[String]) -> Result<()> {
+    let unknown: Vec<&str> =
+        modes.iter().map(String::as_str).filter(|m| !TRANSPORT_MODES.contains(m)).collect();
+
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "ukjent transportmiddel: {}.\nGyldige verdier er: {}",
+        unknown.join(", "),
+        TRANSPORT_MODES.join(", ")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,5 +186,28 @@ mod tests {
     #[test]
     fn empty_modes_produce_empty_list() {
         assert_eq!(transport_modes_arg(&[]), "[]");
+    }
+
+    fn modes(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_shipped_defaults_are_all_valid_modes() {
+        // The config default is what every user hits without passing --modes.
+        assert!(validate_modes(&crate::config::Config::default().modes).is_ok());
+    }
+
+    #[test]
+    fn unknown_modes_are_rejected_with_the_valid_set() {
+        let err = validate_modes(&modes(&["bus", "buss"])).unwrap_err().to_string();
+        // Name the offender, not the whole list the user passed.
+        assert!(err.contains("buss"), "{err}");
+        assert!(err.contains("tram"), "expected the valid values to be listed: {err}");
+    }
+
+    #[test]
+    fn an_empty_mode_list_is_not_an_error() {
+        assert!(validate_modes(&[]).is_ok());
     }
 }

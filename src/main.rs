@@ -88,6 +88,13 @@ fn cmd_trip(
     style: Style,
     destination: Option<String>,
 ) -> Result<()> {
+    // Checked up front, before anything touches GPS or the geocoder: a typo in a flag
+    // should not cost the user a position lookup and two network round trips first.
+    // Checked here rather than in the client so that it fails as a plain CLI error,
+    // instead of opening the watch view only to fill it with a fetch error.
+    let modes = common.modes.clone().unwrap_or_else(|| config.modes.clone());
+    entur::validate_modes(&modes)?;
+
     let destination = destination.or_else(|| config.default_destination.clone()).context(
         "ingen destinasjon oppgitt.\n\
          Bruk `ruter <sted>`, eller sett `default_destination` i konfigurasjonen.",
@@ -121,7 +128,7 @@ fn cmd_trip(
         via,
         num_patterns: common.count.unwrap_or(config.num_results),
         max_walk_minutes: config.max_walk_minutes,
-        modes: common.modes.clone().unwrap_or_else(|| config.modes.clone()),
+        modes,
     };
 
     if common.watch {
