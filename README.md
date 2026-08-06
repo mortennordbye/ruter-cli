@@ -34,14 +34,14 @@ terminalvinduer uten at du trenger å rydde i profilfilen selv.
 ```
   Storo, Oslo  →  Dronningens gate 40, Oslo                          11:59
   ════════════════════════════════════════════════════════════════════════
-  ● om 3 min     12:02 → 12:20   18 min · direkte
+  ● om 3 min     12:02 → 12:20   18 min · direkte · 170 m til fots
       12:02     Storo, Oslo
         ╎    gå 1 min
       12:03     Storo spor A           ● [18 ] trikk  → Jernbanetorget
         ╎    gå 1 min
       12:20     Dronningens gate 40, Oslo
   ────────────────────────────────────────────────────────────────────────
-  ● om 6 min     12:05 → 12:24   19 min · direkte
+  ● om 6 min     12:05 → 12:24   19 min · direkte · 580 m til fots
       12:05     Storo, Oslo
         ╎    gå 3 min
       12:08 +2  Storo spor 1           ● [ 5 ] T-bane → Jernbanetorget
@@ -126,7 +126,23 @@ ruter config add jobb Brekkelia 3D          # anførselstegn er valgfritt
 | `ruter upgrade` | sjekk om det finnes en nyere versjon, og installer den |
 
 Nyttige flagg: `-n` antall resultater, `--modes bus,tram` for å begrense transportmidler,
+`--max-walk 25` for å tillate lengre gange til og fra holdeplass,
 `--no-gps` / `--no-ip` for å skru av posisjonskilder, `--color auto\|always\|never`.
+
+### Gangavstand
+
+Reiseplanleggeren gir deg normalt bare reiser der du går høyst `max_walk_minutes` til
+første holdeplass og fra den siste. Er du villig til å gå lenger, får du ofte færre
+bytter eller en raskere reise:
+
+```sh
+ruter hjem --max-walk 30
+```
+
+Flagget overstyrer `max_walk_minutes` for denne ene kjøringen; sett verdien i
+konfigurasjonen hvis du vil ha den permanent. Grensen er oppgitt i **minutter**, ikke
+meter — Entur begrenser gange på tid, ikke avstand. Hvor langt hver enkelt reise faktisk
+sender deg til fots, står på oppsummeringslinja: `· direkte · 1,2 km til fots`.
 
 `ruter config list`, `ruter config remove <navn>` og `ruter config path` finnes også.
 
@@ -232,7 +248,7 @@ client_name = "nordbye-ruter-cli"   # sendes som ET-Client-Name
 default_destination = "hjem"
 default_origin = "jobb"
 num_results = 5
-max_walk_minutes = 15
+max_walk_minutes = 15               # gange til/fra holdeplass, overstyres av --max-walk
 modes = ["bus", "tram", "metro", "rail", "water"]
 watch_interval_secs = 30
 

@@ -2,7 +2,7 @@
 
 use super::{
     Badge, CONNECTOR, POINT_STOP, RULE_WIDTH, Step, Style, delay_marker, duration_human, hhmm, pad,
-    relative, timeline,
+    relative, timeline, trip_summary,
 };
 use crate::entur::nearest::{EstimatedCall, NearbyStop, StopPlace};
 use crate::entur::trip::TripPattern;
@@ -73,12 +73,6 @@ pub fn trip_board(
             out.push_str(&rule(s, false));
         }
         let marker = if p.has_realtime() { s.green(REALTIME) } else { s.dim(SCHEDULED) };
-        let transfers = p.transit_legs().count().saturating_sub(1);
-        let transfer_text = match transfers {
-            0 => "direkte".to_string(),
-            1 => "1 bytte".to_string(),
-            n => format!("{n} bytter"),
-        };
 
         out.push_str(&format!(
             "  {marker} {} {} \u{2192} {}   {}{}\n",
@@ -86,7 +80,7 @@ pub fn trip_board(
             hhmm(p.expected_start_time),
             hhmm(p.expected_end_time),
             pad(&duration_human(p.duration), 7),
-            s.dim(&format!("\u{00b7} {transfer_text}")),
+            s.dim(&format!("\u{00b7} {}", trip_summary(p))),
         ));
 
         for step in timeline(p, &origin.name, destination) {
@@ -285,6 +279,25 @@ mod tests {
         assert!(out.contains("gå"));
         // No escape sequences in plain mode.
         assert!(!out.contains('\x1b'), "plain output must not contain ANSI escapes");
+    }
+
+    /// The reason for showing it: a raised `--max-walk` buys shorter journeys by
+    /// sending you further on foot, and the board has to make that visible.
+    #[test]
+    fn the_summary_row_reports_the_walk() {
+        let out = trip_board(&patterns(), &origin(Source::Gps), "Hjemme", now(), Style::plain());
+        // Recorded walkDistance on the two fixture patterns: 568.13 m and 1113.56 m.
+        assert!(out.contains("· direkte · 570 m til fots"), "{out}");
+        assert!(out.contains("· direkte · 1,1 km til fots"), "{out}");
+    }
+
+    #[test]
+    fn a_walk_free_journey_says_only_how_many_transfers() {
+        let mut pattern = patterns().remove(0);
+        pattern.walk_distance = 0.0;
+        let out = trip_board(&[pattern], &origin(Source::Gps), "Hjemme", now(), Style::plain());
+        assert!(out.contains("· direkte"));
+        assert!(!out.contains("til fots"), "{out}");
     }
 
     #[test]

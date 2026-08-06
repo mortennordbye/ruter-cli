@@ -133,7 +133,7 @@ fn cmd_trip(
     let query = TripQuery {
         via,
         num_patterns: common.count.unwrap_or(config.num_results),
-        max_walk_minutes: config.max_walk_minutes,
+        max_walk_minutes: common.max_walk.unwrap_or(config.max_walk_minutes),
         modes,
     };
 

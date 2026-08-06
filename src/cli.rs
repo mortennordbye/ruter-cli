@@ -59,6 +59,12 @@ pub struct Common {
     #[arg(long, global = true, value_delimiter = ',', value_name = "MODUS")]
     pub modes: Option<Vec<String>>,
 
+    /// How long you are willing to walk to and from a stop, in minutes.
+    /// Overrides `max_walk_minutes` from the config.
+    #[arg(long, global = true, value_name = "MINUTTER")]
+    #[arg(value_parser = clap::value_parser!(u32).range(1..=180))]
+    pub max_walk: Option<u32>,
+
     /// Do not try Core Location.
     #[arg(long, global = true)]
     pub no_gps: bool,
@@ -207,6 +213,16 @@ mod tests {
         assert_eq!(cli.common.from.as_deref(), Some("jobb"));
         assert_eq!(cli.destination, ["Brekkelia", "3D"]);
         assert!(cli.common.watch);
+    }
+
+    #[test]
+    fn the_walk_limit_is_optional_and_rejects_zero() {
+        assert_eq!(Cli::parse_from(["ruter", "hjem"]).common.max_walk, None);
+        let cli = Cli::parse_from(["ruter", "hjem", "--max-walk", "25"]);
+        assert_eq!(cli.common.max_walk, Some(25));
+        // A zero-minute walk allowance reaches no stop at all, so it is a CLI error
+        // rather than a query Entur answers with nothing.
+        assert!(Cli::try_parse_from(["ruter", "hjem", "--max-walk", "0"]).is_err());
     }
 
     /// `config add` already joined its words; that must keep working.

@@ -314,6 +314,42 @@ pub fn duration_human(seconds: i64) -> String {
     if m == 0 { format!("{h} t") } else { format!("{h} t {m} min") }
 }
 
+/// `450 m`, `1,2 km`, or `None` when the journey involves no real walking.
+///
+/// Metres are rounded to the nearest ten: Entur reports the routed distance to the
+/// centimetre, and nobody plans around the last 3 m. Norwegian writes the decimal
+/// separator as a comma.
+fn walk_human(metres: f64) -> Option<String> {
+    // Wire data, so guard NaN and nonsense rather than trusting the field.
+    if !metres.is_finite() || metres < 10.0 {
+        return None;
+    }
+    // 995 rather than 1000: anything above it rounds to tens as "1000 m", which is
+    // a kilometre spelled the long way.
+    if metres < 995.0 {
+        return Some(format!("{} m", (metres / 10.0).round() as i64 * 10));
+    }
+    Some(format!("{:.1} km", metres / 1000.0).replace('.', ","))
+}
+
+/// The trailing note on a journey's headline row: how many transfers, and how far
+/// you walk to make them.
+///
+/// The walk matters most exactly when the limit has been raised — a journey that is
+/// two minutes faster because it sends you 1,8 km on foot should say so.
+pub fn trip_summary(pattern: &TripPattern) -> String {
+    let transfers = pattern.transit_legs().count().saturating_sub(1);
+    let transfers = match transfers {
+        0 => "direkte".to_string(),
+        1 => "1 bytte".to_string(),
+        n => format!("{n} bytter"),
+    };
+    match walk_human(pattern.walk_distance) {
+        Some(walk) => format!("{transfers} \u{00b7} {walk} til fots"),
+        None => transfers,
+    }
+}
+
 /// Render a delay as `+3` / `-1`, or nothing when it rounds away.
 ///
 /// Anything under a minute is suppressed: a bus 40 seconds behind schedule is
@@ -565,6 +601,25 @@ mod tests {
         assert_eq!(duration_human(60), "1 min");
         assert_eq!(duration_human(3900), "1 t 5 min");
         assert_eq!(duration_human(3600), "1 t");
+    }
+
+    #[test]
+    fn walk_distance_reads_in_metres_then_kilometres() {
+        assert_eq!(walk_human(454.3).as_deref(), Some("450 m"));
+        assert_eq!(walk_human(994.0).as_deref(), Some("990 m"));
+        // Never "1000 m".
+        assert_eq!(walk_human(999.0).as_deref(), Some("1,0 km"));
+        // Norwegian decimal comma, not a point.
+        assert_eq!(walk_human(1234.0).as_deref(), Some("1,2 km"));
+        assert_eq!(walk_human(2000.0).as_deref(), Some("2,0 km"));
+    }
+
+    #[test]
+    fn a_journey_with_no_walking_reports_none() {
+        assert_eq!(walk_human(0.0), None);
+        // Wire data: neither a NaN nor a negative distance may reach the board.
+        assert_eq!(walk_human(f64::NAN), None);
+        assert_eq!(walk_human(-5.0), None);
     }
 
     #[test]

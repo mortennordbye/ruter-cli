@@ -11,7 +11,7 @@ use crate::entur::trip::{TripPattern, TripQuery};
 use crate::location::Origin;
 use crate::render::{
     Badge, CONNECTOR, POINT_STOP, RULE_WIDTH, Rgb, Step, delay_marker, duration_human, hhmm, pad,
-    relative, timeline,
+    relative, timeline, trip_summary,
 };
 use anyhow::Result;
 use chrono::{DateTime, FixedOffset, Local};
@@ -379,13 +379,6 @@ fn trip_lines(
         if i > 0 {
             lines.push(rule_line());
         }
-        let transfers = p.transit_legs().count().saturating_sub(1);
-        let transfer_text = match transfers {
-            0 => "direkte".to_string(),
-            1 => "1 bytte".to_string(),
-            n => format!("{n} bytter"),
-        };
-
         lines.push(Line::from(vec![
             Span::raw("  "),
             realtime_span(p.has_realtime()),
@@ -400,7 +393,7 @@ fn trip_lines(
                 hhmm(p.expected_end_time)
             )),
             dim(pad(&duration_human(p.duration), 7)),
-            dim(format!("\u{00b7} {transfer_text}")),
+            dim(format!("\u{00b7} {}", trip_summary(p))),
         ]));
 
         // Same rows as the one-shot board, drawn as spans instead of a string.
