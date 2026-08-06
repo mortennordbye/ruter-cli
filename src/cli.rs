@@ -2,6 +2,11 @@
 
 use clap::{Args, Parser, Subcommand};
 
+/// Journey Planner v3 refuses a `maxAccessEgressDurationForMode` above this:
+/// "Invalid duration for mode WALK. The value 46m is greater than the default 45m."
+/// Capping here turns that server round trip into an immediate CLI error.
+const MAX_WALK_MINUTES: i64 = 45;
+
 #[derive(Debug, Parser)]
 #[command(
     name = "ruter",
@@ -60,9 +65,9 @@ pub struct Common {
     pub modes: Option<Vec<String>>,
 
     /// How long you are willing to walk to and from a stop, in minutes.
-    /// Overrides `max_walk_minutes` from the config.
+    /// Overrides `max_walk_minutes` from the config. Entur allows at most 45.
     #[arg(long, global = true, value_name = "MINUTTER")]
-    #[arg(value_parser = clap::value_parser!(u32).range(1..=180))]
+    #[arg(value_parser = clap::value_parser!(u32).range(1..=MAX_WALK_MINUTES))]
     pub max_walk: Option<u32>,
 
     /// Do not try Core Location.
@@ -223,6 +228,14 @@ mod tests {
         // A zero-minute walk allowance reaches no stop at all, so it is a CLI error
         // rather than a query Entur answers with nothing.
         assert!(Cli::try_parse_from(["ruter", "hjem", "--max-walk", "0"]).is_err());
+    }
+
+    /// Verified against the live API: 45 is answered, 46 comes back
+    /// "Invalid duration for mode WALK". Rejecting it here saves the round trip.
+    #[test]
+    fn the_walk_limit_stops_where_entur_stops() {
+        assert!(Cli::try_parse_from(["ruter", "hjem", "--max-walk", "45"]).is_ok());
+        assert!(Cli::try_parse_from(["ruter", "hjem", "--max-walk", "46"]).is_err());
     }
 
     /// `config add` already joined its words; that must keep working.

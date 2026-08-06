@@ -141,7 +141,7 @@ ruter hjem --max-walk 30
 
 Flagget overstyrer `max_walk_minutes` for denne ene kjøringen; sett verdien i
 konfigurasjonen hvis du vil ha den permanent. Grensen er oppgitt i **minutter**, ikke
-meter — Entur begrenser gange på tid, ikke avstand. Hvor langt hver enkelt reise faktisk
+meter — Entur begrenser gange på tid, ikke avstand — og Entur godtar høyst 45. Hvor langt hver enkelt reise faktisk
 sender deg til fots, står på oppsummeringslinja: `· direkte · 1,2 km til fots`.
 
 `ruter config list`, `ruter config remove <navn>` og `ruter config path` finnes også.
