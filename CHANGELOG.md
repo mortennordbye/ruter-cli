@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/mortennordbye/ruter-cli/compare/v0.6.0...v0.7.0) (2026-08-06)
+
+
+### Features
+
+* **cli:** allow a longer walk with --max-walk, and show how far each journey walks ([#21](https://github.com/mortennordbye/ruter-cli/issues/21)) ([f95c1ea](https://github.com/mortennordbye/ruter-cli/commit/f95c1ea69ab2e4b00bd3f013547125bb8873e736))
+
 ## [0.6.0](https://github.com/mortennordbye/ruter-cli/compare/v0.5.0...v0.6.0) (2026-08-04)
 
 
