@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/mortennordbye/ruter-cli/compare/v0.7.0...v0.7.1) (2026-08-06)
+
+
+### Bug Fixes
+
+* **cli:** cap --max-walk at the 45 minutes Entur actually accepts ([#23](https://github.com/mortennordbye/ruter-cli/issues/23)) ([d5ee1ae](https://github.com/mortennordbye/ruter-cli/commit/d5ee1ae9fcac25fc06fa2f1168b50f452efd2334))
+
 ## [0.7.0](https://github.com/mortennordbye/ruter-cli/compare/v0.6.0...v0.7.0) (2026-08-06)
 
 
