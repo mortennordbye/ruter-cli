@@ -11,7 +11,7 @@ use clap::{Args, Parser, Subcommand};
     after_help = "Eksempler:\n  \
         ruter config add hjem \"Dronningens gate 40, Oslo\"\n  \
         ruter hjem                 reise fra der du er n\u{e5} til \"hjem\"\n  \
-        ruter Brekkelia 3D         adresser trenger ikke anf\u{f8}rselstegn\n  \
+        ruter Storgata 10          adresser trenger ikke anf\u{f8}rselstegn\n  \
         ruter hjem --watch         samme, men oppdaterer seg selv\n  \
         ruter near                 avganger fra holdeplasser i n\u{e6}rheten\n  \
         ruter --from jobb hjem     reise mellom to lagrede steder\n  \
@@ -25,7 +25,7 @@ pub struct Cli {
     /// Defaults to `default_destination` from the config.
     ///
     /// Collected as words and joined, so an address with spaces needs no quotes:
-    /// `ruter Brekkelia 3D` and `ruter "Brekkelia 3D"` are the same thing. A
+    /// `ruter Storgata 10` and `ruter "Storgata 10"` are the same thing. A
     /// subcommand still wins the first word, so `ruter near` is unaffected.
     #[arg(value_name = "DESTINASJON")]
     pub destination: Vec<String>,
@@ -182,8 +182,8 @@ mod tests {
 
     #[test]
     fn a_destination_may_be_several_words() {
-        let cli = Cli::parse_from(["ruter", "Brekkelia", "3D"]);
-        assert_eq!(cli.destination, ["Brekkelia", "3D"]);
+        let cli = Cli::parse_from(["ruter", "Storgata", "10"]);
+        assert_eq!(cli.destination, ["Storgata", "10"]);
         assert!(cli.command.is_none());
     }
 
@@ -203,21 +203,21 @@ mod tests {
 
     #[test]
     fn flags_survive_a_multi_word_destination() {
-        let cli = Cli::parse_from(["ruter", "--from", "jobb", "Brekkelia", "3D", "--watch"]);
+        let cli = Cli::parse_from(["ruter", "--from", "jobb", "Storgata", "10", "--watch"]);
         assert_eq!(cli.common.from.as_deref(), Some("jobb"));
-        assert_eq!(cli.destination, ["Brekkelia", "3D"]);
+        assert_eq!(cli.destination, ["Storgata", "10"]);
         assert!(cli.common.watch);
     }
 
     /// `config add` already joined its words; that must keep working.
     #[test]
     fn config_add_still_takes_an_unquoted_address() {
-        let cli = Cli::parse_from(["ruter", "config", "add", "hjem", "Brekkelia", "3D"]);
+        let cli = Cli::parse_from(["ruter", "config", "add", "hjem", "Storgata", "10"]);
         let Some(Command::Config { action: ConfigAction::Add { name, query, .. } }) = cli.command
         else {
             panic!("expected `config add`");
         };
         assert_eq!(name, "hjem");
-        assert_eq!(query.join(" "), "Brekkelia 3D");
+        assert_eq!(query.join(" "), "Storgata 10");
     }
 }

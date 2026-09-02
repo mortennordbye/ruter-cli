@@ -107,7 +107,7 @@ skrive inn lengde- og breddegrad selv.
 
 ```sh
 ruter config add hjem "Dronningens gate 40, Oslo"
-ruter config add jobb Brekkelia 3D          # anførselstegn er valgfritt
+ruter config add jobb Storgata 10          # anførselstegn er valgfritt
 ```
 
 ## Bruk
@@ -119,7 +119,7 @@ ruter config add jobb Brekkelia 3D          # anførselstegn er valgfritt
 | `ruter near` | avganger fra holdeplasser i nærheten |
 | `ruter --from jobb hjem` | reise mellom to lagrede steder |
 | `ruter Oslo S` | destinasjonen kan også være en adresse eller `59.91,10.75` |
-| `ruter Brekkelia 3D` | adresser med mellomrom trenger ikke anførselstegn |
+| `ruter Storgata 10` | adresser med mellomrom trenger ikke anførselstegn |
 | `ruter hjem --json` | rå JSON, for skripting |
 | `ruter where` | hvor den tror du er, og hvilken kilde den brukte |
 | `ruter doctor` | diagnoserapport å lime inn i en feilrapport |
