@@ -1,14 +1,13 @@
 <div align="center">
 
-# 🚋 ruter-cli
+<img src="assets/icon.svg" alt="" width="112" height="112">
+
+# ruter-cli
 
 ### Neste avgang med buss, trikk, T-bane og tog — fra der du står, i terminalen.
 
-[![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](https://www.rust-lang.org) [![Ratatui](https://img.shields.io/badge/Ratatui-2E3440?logo=rust&logoColor=white)](https://ratatui.rs) [![Entur](https://img.shields.io/badge/Entur%20API-1A1A1A?logo=graphql&logoColor=E10098)](https://developer.entur.org/) [![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)](https://www.apple.com/macos/)
-
-[![CI](https://github.com/mortennordbye/ruter-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/mortennordbye/ruter-cli/actions/workflows/ci.yml) [![Scorecard](https://github.com/mortennordbye/ruter-cli/actions/workflows/scorecard.yml/badge.svg)](https://github.com/mortennordbye/ruter-cli/actions/workflows/scorecard.yml) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/mortennordbye/ruter-cli/badge)](https://securityscorecards.dev/viewer/?uri=github.com/mortennordbye/ruter-cli)
-
-[![License](https://img.shields.io/github/license/mortennordbye/ruter-cli?style=flat-square)](LICENSE) [![Last Commit](https://img.shields.io/github/last-commit/mortennordbye/ruter-cli?style=flat-square)](https://github.com/mortennordbye/ruter-cli/commits/main) [![Stars](https://img.shields.io/github/stars/mortennordbye/ruter-cli?style=flat-square)](https://github.com/mortennordbye/ruter-cli/stargazers)
+[![Rust](https://img.shields.io/badge/Rust-6f0d10?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org) [![Ratatui](https://img.shields.io/badge/Ratatui-6f0d10?style=flat-square)](https://ratatui.rs) [![Entur API](https://img.shields.io/badge/Entur%20API-6f0d10?style=flat-square&logo=graphql&logoColor=white)](https://developer.entur.org/) [![macOS](https://img.shields.io/badge/macOS-6f0d10?style=flat-square&logo=apple&logoColor=white)](https://www.apple.com/macos/)<br>
+[![CI](https://img.shields.io/github/actions/workflow/status/mortennordbye/ruter-cli/ci.yml?branch=main&style=flat-square&labelColor=6f0d10&label=CI)](https://github.com/mortennordbye/ruter-cli/actions/workflows/ci.yml) [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/mortennordbye/ruter-cli?style=flat-square&labelColor=6f0d10&label=openssf%20scorecard)](https://scorecard.dev/viewer/?uri=github.com/mortennordbye/ruter-cli) [![License](https://img.shields.io/github/license/mortennordbye/ruter-cli?style=flat-square&labelColor=6f0d10&color=d7141a)](LICENSE) [![Last commit](https://img.shields.io/github/last-commit/mortennordbye/ruter-cli?style=flat-square&labelColor=6f0d10&color=d7141a)](https://github.com/mortennordbye/ruter-cli/commits/main) [![Stars](https://img.shields.io/github/stars/mortennordbye/ruter-cli?style=flat-square&labelColor=6f0d10&color=d7141a)](https://github.com/mortennordbye/ruter-cli/stargazers)
 
 Bygget på [Entur](https://developer.entur.org/) sitt åpne Journey Planner-API, så det dekker hele
 Norge. Navnet kommer av at det er skrevet for daglig bruk i Oslo, der Ruter er operatøren.

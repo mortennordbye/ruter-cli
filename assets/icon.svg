@@ -1,0 +1,69 @@
+<!-- ruter-cli H: on a transit-red tile, a cream pictogram commuter sprints for the tram that is pulling away. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="ruter-cli">
+  <title>ruter-cli</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#D7141A"/>
+      <stop offset="1" stop-color="#9B0D12"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".12"/>
+      <stop offset=".45" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".35"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="tram" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A2C33"/>
+      <stop offset="1" stop-color="#0B0C10"/>
+    </linearGradient>
+    <linearGradient id="win" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF4C2"/>
+      <stop offset="1" stop-color="#FFC94D"/>
+    </linearGradient>
+    <filter id="drop" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#3A0004" flood-opacity=".5"/>
+    </filter>
+    <clipPath id="clip"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#tile)"/>
+  <rect width="512" height="512" rx="112" fill="url(#sheen)"/>
+
+  <g clip-path="url(#clip)">
+    <!-- tram pulling away to the right -->
+    <g filter="url(#drop)">
+      <path d="M350 140 L512 140 L512 410 L322 410 C308 410 300 402 300 388 L300 190 C300 160 322 140 350 140 Z" fill="url(#tram)"/>
+      <path d="M370 140 L392 104 L490 104" fill="none" stroke="#0B0C10" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <rect x="324" y="158" width="150" height="40" rx="8" fill="#05080F" stroke="#FFF7ED" stroke-opacity=".35" stroke-width="3"/>
+    <path d="M338 166 L352 178 L338 190" fill="none" stroke="#4ADE80" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="360" y="184" width="20" height="7" rx="2" fill="#F8FAFC"/>
+    <rect x="324" y="214" width="62" height="82" rx="12" fill="url(#win)"/>
+    <rect x="402" y="214" width="62" height="82" rx="12" fill="url(#win)"/>
+    <rect x="480" y="214" width="62" height="82" rx="12" fill="url(#win)"/>
+    <rect x="300" y="314" width="212" height="10" fill="#F6EEE3" opacity=".9"/>
+    <rect x="312" y="352" width="18" height="34" rx="6" fill="#FFB020"/>
+    <!-- rails: the double rule -->
+    <rect x="0" y="420" width="512" height="10" rx="3" fill="#F6EEE3" opacity=".9"/>
+    <rect x="0" y="440" width="512" height="10" rx="3" fill="#F6EEE3" opacity=".9"/>
+    <!-- speed lines -->
+    <g stroke="#FFF7ED" stroke-width="12" stroke-linecap="round" opacity=".55">
+      <path d="M38 196 L92 196"/>
+      <path d="M24 250 L96 250"/>
+      <path d="M44 304 L84 304"/>
+    </g>
+  </g>
+
+  <!-- runner -->
+  <g fill="none" stroke="#FFF7ED" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" filter="url(#drop)">
+    <path d="M206 196 L166 290"/>
+    <path d="M206 206 L246 236 L272 214"/>
+    <path d="M198 214 L150 220 L130 258"/>
+    <path d="M166 290 L226 318 L218 394"/>
+    <path d="M166 290 L136 356 L82 372"/>
+    <circle cx="236" cy="142" r="30" fill="#FFF7ED" stroke="none"/>
+  </g>
+
+  <rect x="1.5" y="1.5" width="509" height="509" rx="110.5" fill="none" stroke="url(#edge)" stroke-width="3"/>
+</svg>
