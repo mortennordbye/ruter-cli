@@ -4,20 +4,30 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps):"
     groups:
       github-actions:
         patterns: ["*"]
+      # The auto-merge workflow reads this exact group name.
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
 
-  # Grouped on purpose: there is no auto-merge on this repo, so ungrouped updates
-  # would mean one manual PR per crate per week. Majors stay individual.
+  # Majors stay individual, so one breaking crate cannot hold back the rest.
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps):"
     groups:
       cargo-minor-patch:
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
