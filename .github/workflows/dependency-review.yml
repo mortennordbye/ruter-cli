@@ -13,4 +13,4 @@ jobs:
       - uses: actions/checkout@v7
       # Pinned to v5.0.0, not a floating v5: this action publishes no moving
       # major tag, so `@v5` fails at action resolution before doing any work.
-      - uses: actions/dependency-review-action@v5.0.0
+      - uses: actions/dependency-review-action@v5.0.1
